@@ -1,0 +1,29 @@
+{
+  "name": "bd-crm-v2",
+  "private": true,
+  "version": "0.1.0",
+  "description": "留学合作机构管理系统",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w @bdcrm/server",
+    "db:seed": "npm run db:seed -w @bdcrm/server",
+    "db:reset": "npm run db:reset -w @bdcrm/server",
+    "db:studio": "npm run db:studio -w @bdcrm/server",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @bdcrm/server\" \"npm run dev -w @bdcrm/web\"",
+    "dev:server": "npm run dev -w @bdcrm/server",
+    "dev:web": "npm run dev -w @bdcrm/web",
+    "typecheck": "npm run typecheck -w @bdcrm/server && npm run typecheck -w @bdcrm/web",
+    "build": "npm run build -w @bdcrm/server && npm run build -w @bdcrm/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

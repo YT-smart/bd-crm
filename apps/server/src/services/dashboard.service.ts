@@ -1,0 +1,304 @@
+import { Prisma } from '@prisma/client';
+import {
+  APPROVED_DEAL_STATUSES,
+  computeCompleteness,
+  type DashboardDistribution,
+  type DashboardLists,
+  type DashboardRange,
+  type DashboardSummary,
+  type DealBrief,
+  type MetricWithDelta,
+  type MyOrgDashboard,
+  type ProvinceStat,
+  type TrendPoint,
+} from '@bdcrm/shared';
+import { config } from '../config';
+import { prisma } from '../lib/prisma';
+import { Errors } from '../lib/http';
+import { deltaPercent, lastMonths, monthStart, resolveRange } from '../lib/date';
+
+const APPROVED = [...APPROVED_DEAL_STATUSES];
+const num = (v: Prisma.Decimal | number | null | undefined) => (v == null ? 0 : Number(v));
+
+/** 数据库中 DateTime 以 UTC 存储，按月分组前先转为北京时间 */
+const localTs = (col: string) => Prisma.raw(`("${col}" AT TIME ZONE 'UTC' AT TIME ZONE '${config.dbTimezone}')`);
+const APPROVED_SQL = Prisma.raw(`('PENDING_PAYMENT','SETTLED')`);
+
+function metric(value: number, previous: number): MetricWithDelta {
+  return { value, previous, delta: deltaPercent(value, previous) };
+}
+
+/* ---------------- 指标卡 ---------------- */
+
+export async function getSummary(range: DashboardRange): Promise<DashboardSummary> {
+  const r = resolveRange(range);
+
+  const dealAgg = (from: Date, to: Date) =>
+    prisma.deal.aggregate({
+      where: { status: { in: APPROVED }, dealAt: { gte: from, lt: to } },
+      _count: { _all: true },
+      _sum: { amount: true },
+    });
+  const incomeAgg = (from: Date, to: Date) =>
+    prisma.deal.aggregate({
+      where: { status: 'SETTLED', settledAt: { gte: from, lt: to } },
+      _sum: { commission: true },
+    });
+  const orgNew = (from: Date, to: Date) =>
+    prisma.org.count({ where: { deletedAt: null, createdAt: { gte: from, lt: to } } });
+
+  const [orgTotal, orgCur, orgPrev, dealCur, dealPrev, incCur, incPrev, receivable, pendingAuditCount] =
+    await Promise.all([
+      prisma.org.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
+      orgNew(r.start, r.end),
+      orgNew(r.prevStart, r.prevEnd),
+      dealAgg(r.start, r.end),
+      dealAgg(r.prevStart, r.prevEnd),
+      incomeAgg(r.start, r.end),
+      incomeAgg(r.prevStart, r.prevEnd),
+      prisma.deal.aggregate({
+        where: { status: 'PENDING_PAYMENT' },
+        _count: { _all: true },
+        _sum: { commission: true },
+      }),
+      prisma.deal.count({ where: { status: 'PENDING_AUDIT' } }),
+    ]);
+
+  return {
+    range,
+    orgTotal,
+    orgNew: metric(orgCur, orgPrev),
+    dealCount: metric(dealCur._count._all, dealPrev._count._all),
+    dealAmount: metric(num(dealCur._sum.amount), num(dealPrev._sum.amount)),
+    commissionIncome: metric(num(incCur._sum.commission), num(incPrev._sum.commission)),
+    receivable: { amount: num(receivable._sum.commission), count: receivable._count._all },
+    pendingAuditCount,
+  };
+}
+
+/* ---------------- 近 12 个月趋势 ---------------- */
+
+export async function getTrend(): Promise<TrendPoint[]> {
+  const months = lastMonths(12);
+  const from = monthStart(-11);
+
+  const [deals, settled, orgs] = await Promise.all([
+    prisma.$queryRaw<{ month: string; deal_count: number; amount: number; commission: number }[]>`
+      SELECT to_char(date_trunc('month', ${localTs('dealAt')}), 'YYYY-MM') AS month,
+             COUNT(*)::int AS deal_count,
+             COALESCE(SUM(amount), 0)::float8 AS amount,
+             COALESCE(SUM(commission), 0)::float8 AS commission
+      FROM "Deal"
+      WHERE status IN ${APPROVED_SQL} AND "dealAt" >= ${from}
+      GROUP BY 1`,
+    prisma.$queryRaw<{ month: string; settled: number }[]>`
+      SELECT to_char(date_trunc('month', ${localTs('settledAt')}), 'YYYY-MM') AS month,
+             COALESCE(SUM(commission), 0)::float8 AS settled
+      FROM "Deal"
+      WHERE status = 'SETTLED' AND "settledAt" >= ${from}
+      GROUP BY 1`,
+    prisma.$queryRaw<{ month: string; new_orgs: number }[]>`
+      SELECT to_char(date_trunc('month', ${localTs('createdAt')}), 'YYYY-MM') AS month,
+             COUNT(*)::int AS new_orgs
+      FROM "Org"
+      WHERE "deletedAt" IS NULL AND "createdAt" >= ${from}
+      GROUP BY 1`,
+  ]);
+
+  const dm = new Map(deals.map((d) => [d.month, d]));
+  const sm = new Map(settled.map((d) => [d.month, d.settled]));
+  const om = new Map(orgs.map((d) => [d.month, d.new_orgs]));
+
+  return months.map((month) => ({
+    month,
+    dealCount: dm.get(month)?.deal_count ?? 0,
+    amount: dm.get(month)?.amount ?? 0,
+    commission: dm.get(month)?.commission ?? 0,
+    settled: sm.get(month) ?? 0,
+    newOrgs: om.get(month) ?? 0,
+  }));
+}
+
+/* ---------------- 分布：省份 / 业务类型 / Top 机构 ---------------- */
+
+interface ProvinceRow {
+  name: string;
+  count: number;
+  active: number;
+  deal_count: number;
+  amount: number;
+  commission: number;
+}
+
+export async function getDistribution(range: DashboardRange): Promise<DashboardDistribution> {
+  const r = resolveRange(range);
+
+  const [provinceRows, cityRows, typeRows, topRows] = await Promise.all([
+    prisma.$queryRaw<ProvinceRow[]>`
+      SELECT o.province AS name,
+             COUNT(*)::int AS count,
+             (COUNT(*) FILTER (WHERE o.status = 'ACTIVE'))::int AS active,
+             COALESCE(SUM(d.deal_count), 0)::int AS deal_count,
+             COALESCE(SUM(d.amount), 0)::float8 AS amount,
+             COALESCE(SUM(d.commission), 0)::float8 AS commission
+      FROM "Org" o
+      LEFT JOIN (
+        SELECT "orgId", COUNT(*) AS deal_count, SUM(amount) AS amount, SUM(commission) AS commission
+        FROM "Deal" WHERE status IN ${APPROVED_SQL}
+        GROUP BY "orgId"
+      ) d ON d."orgId" = o.id
+      WHERE o."deletedAt" IS NULL AND o.province IS NOT NULL
+      GROUP BY o.province
+      ORDER BY count DESC`,
+    prisma.$queryRaw<{ province: string; city: string; count: number }[]>`
+      SELECT province, city, COUNT(*)::int AS count
+      FROM "Org"
+      WHERE "deletedAt" IS NULL AND province IS NOT NULL AND city IS NOT NULL
+      GROUP BY province, city
+      ORDER BY count DESC`,
+    prisma.$queryRaw<{ name: string; value: number }[]>`
+      SELECT t AS name, COUNT(*)::int AS value
+      FROM "Org", unnest("businessTypes") AS t
+      WHERE "deletedAt" IS NULL
+      GROUP BY t
+      ORDER BY value DESC`,
+    prisma.$queryRaw<{ id: string; name: string; deal_count: number; amount: number; commission: number }[]>`
+      SELECT o.id, o.name,
+             COUNT(d.id)::int AS deal_count,
+             COALESCE(SUM(d.amount), 0)::float8 AS amount,
+             COALESCE(SUM(d.commission), 0)::float8 AS commission
+      FROM "Deal" d
+      JOIN "Org" o ON o.id = d."orgId"
+      WHERE d.status IN ${APPROVED_SQL} AND d."dealAt" >= ${r.start} AND o."deletedAt" IS NULL
+      GROUP BY o.id, o.name
+      ORDER BY commission DESC
+      LIMIT 10`,
+  ]);
+
+  const citiesByProvince = new Map<string, string[]>();
+  for (const c of cityRows) {
+    const arr = citiesByProvince.get(c.province) ?? [];
+    if (arr.length < 3) arr.push(c.city);
+    citiesByProvince.set(c.province, arr);
+  }
+
+  return {
+    provinces: provinceRows.map(({ deal_count, ...p }): ProvinceStat => ({
+      ...p,
+      dealCount: deal_count,
+      topCities: citiesByProvince.get(p.name) ?? [],
+    })),
+    businessTypes: typeRows,
+    topOrgs: topRows.map((t) => ({
+      id: t.id,
+      name: t.name,
+      dealCount: t.deal_count,
+      amount: t.amount,
+      commission: t.commission,
+    })),
+  };
+}
+
+/* ---------------- 列表区 ---------------- */
+
+const dealBriefSelect = {
+  id: true,
+  orgId: true,
+  studentName: true,
+  amount: true,
+  commission: true,
+  status: true,
+  dealAt: true,
+  createdAt: true,
+  org: { select: { name: true } },
+} satisfies Prisma.DealSelect;
+
+type DealBriefRow = Prisma.DealGetPayload<{ select: typeof dealBriefSelect }>;
+
+function toDealBrief(d: DealBriefRow): DealBrief {
+  return {
+    id: d.id,
+    orgId: d.orgId,
+    orgName: d.org.name,
+    studentName: d.studentName,
+    amount: num(d.amount),
+    commission: num(d.commission),
+    status: d.status,
+    dealAt: d.dealAt.toISOString(),
+    createdAt: d.createdAt.toISOString(),
+  };
+}
+
+export async function getLists(): Promise<DashboardLists> {
+  const [pending, recent, incomplete] = await Promise.all([
+    prisma.deal.findMany({
+      where: { status: 'PENDING_AUDIT' },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+      select: dealBriefSelect,
+    }),
+    prisma.deal.findMany({
+      where: { status: { in: APPROVED } },
+      orderBy: { dealAt: 'desc' },
+      take: 6,
+      select: dealBriefSelect,
+    }),
+    prisma.org.findMany({
+      where: { deletedAt: null, completeness: { lt: 70 }, status: { in: ['ACTIVE', 'NEGOTIATING'] } },
+      orderBy: [{ completeness: 'asc' }, { createdAt: 'desc' }],
+      take: 6,
+      select: { id: true, name: true, city: true, completeness: true, status: true },
+    }),
+  ]);
+  return {
+    pendingDeals: pending.map(toDealBrief),
+    recentDeals: recent.map(toDealBrief),
+    incompleteOrgs: incomplete,
+  };
+}
+
+/* ---------------- 机构视图 ---------------- */
+
+export async function getMyOrgDashboard(orgId: string): Promise<MyOrgDashboard> {
+  const org = await prisma.org.findFirst({
+    where: { id: orgId, deletedAt: null },
+    include: { _count: { select: { contacts: true, products: true } } },
+  });
+  if (!org) throw Errors.notFound('机构不存在或已删除');
+
+  const [groups, recent] = await Promise.all([
+    prisma.deal.groupBy({
+      by: ['status'],
+      where: { orgId },
+      _count: { _all: true },
+      _sum: { amount: true, commission: true },
+    }),
+    prisma.deal.findMany({ where: { orgId }, orderBy: { createdAt: 'desc' }, take: 8, select: dealBriefSelect }),
+  ]);
+
+  const g = (s: string) => groups.find((x) => x.status === s);
+  const approved = groups.filter((x) => APPROVED.includes(x.status));
+  const { score, missing } = computeCompleteness({ ...org, contactCount: org._count.contacts, productCount: org._count.products });
+
+  return {
+    org: {
+      id: org.id,
+      name: org.name,
+      status: org.status,
+      level: org.level,
+      defaultRate: num(org.defaultRate),
+      completeness: score,
+      missing,
+    },
+    totals: {
+      dealCount: approved.reduce((s, x) => s + x._count._all, 0),
+      amount: approved.reduce((s, x) => s + num(x._sum.amount), 0),
+      commission: approved.reduce((s, x) => s + num(x._sum.commission), 0),
+      settled: num(g('SETTLED')?._sum.commission),
+      unsettled: num(g('PENDING_PAYMENT')?._sum.commission),
+      pendingAudit: g('PENDING_AUDIT')?._count._all ?? 0,
+      rejected: g('REJECTED')?._count._all ?? 0,
+    },
+    recentDeals: recent.map(toDealBrief),
+  };
+}

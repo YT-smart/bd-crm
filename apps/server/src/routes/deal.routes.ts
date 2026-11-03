@@ -1,0 +1,201 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { DealStatus, DEAL_STATUS_LABEL, PERM } from '@bdcrm/shared';
+import { ok, Errors } from '../lib/http';
+import { requirePerm } from '../middlewares/auth';
+import { writeAudit } from '../services/audit.service';
+import { DAY_RE, fmtDay } from '../lib/date';
+import {
+  listDeals,
+  getDealSummary,
+  createDeal,
+  updateDeal,
+  auditDeal,
+  batchApprove,
+  settleDeals,
+  revokeSettle,
+  listOrgOptions,
+  exportDeals,
+} from '../services/deal.service';
+
+const router = Router();
+
+/* ============ 统计概览 ============ */
+
+router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
+  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
+  ok(res, await getDealSummary(scopeOrgId));
+});
+
+/* ============ 机构选项（录入下拉） ============ */
+
+router.get('/org-options', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
+  // 机构账号只能拿到自己机构（含产品比例），不能看到其他机构的佣金条款
+  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
+  ok(res, await listOrgOptions(scopeOrgId));
+});
+
+/* ============ 导出 ============ */
+
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  keyword: z.string().trim().max(50).optional(),
+  orgId: z.string().cuid().optional(),
+  status: z.nativeEnum(DealStatus).optional(),
+  startDate: z.string().regex(DAY_RE, '日期格式应为 YYYY-MM-DD').optional(),
+  endDate: z.string().regex(DAY_RE, '日期格式应为 YYYY-MM-DD').optional(),
+  sort: z.enum(['dealAt', 'amount', 'commission', 'createdAt']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
+router.get('/export', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
+  const q = querySchema.parse(req.query);
+  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
+  const rows = await exportDeals(q, scopeOrgId);
+
+  const data = rows.map((d) => ({
+    orgName: d.org.name,
+    studentName: d.studentName,
+    productName: d.product?.name ?? '',
+    dealAt: fmtDay(d.dealAt),
+    amount: Number(d.amount),
+    rate: Number(d.rate),
+    commission: Number(d.commission),
+    status: DEAL_STATUS_LABEL[d.status] ?? d.status,
+    createdBy: d.createdBy.name,
+    settledAt: fmtDay(d.settledAt),
+    note: d.note ?? '',
+  }));
+  writeAudit(req, { module: 'deal', action: 'export', targetName: `导出 ${data.length} 条` });
+  ok(res, data);
+});
+
+/* ============ 列表 ============ */
+
+router.get('/', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
+  const q = querySchema.parse(req.query);
+  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
+  ok(res, await listDeals(q, scopeOrgId));
+});
+
+/* ============ 录入成交 ============ */
+
+const createSchema = z.object({
+  orgId: z.string().cuid(),
+  productId: z.string().cuid().nullish(),
+  studentName: z.string().trim().min(1, '学生姓名不能为空').max(50),
+  studentPhone: z.string().max(20).nullish(),
+  dealAt: z.string().datetime({ message: '成交日期格式有误' }),
+  amount: z.number().min(0, '成交金额不能为负'),
+  rate: z.number().min(0).max(100),
+  commission: z.number().min(0),
+  note: z.string().max(500).nullish(),
+});
+
+router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
+  const input = createSchema.parse(req.body);
+
+  // 机构角色只能为自己的机构录入
+  if (req.user!.role === 'ORG' && input.orgId !== req.user!.orgId) {
+    throw Errors.forbidden('只能为本机构录入成交');
+  }
+
+  const deal = await createDeal({ ...input, createdById: req.user!.id, enforceAgreedRate: req.user!.role === 'ORG' });
+  writeAudit(req, {
+    module: 'deal',
+    action: 'create',
+    targetId: deal.id,
+    targetName: `${input.studentName}`,
+    after: { orgId: input.orgId, amount: input.amount, commission: input.commission },
+  });
+  ok(res, { id: deal.id }, 201);
+});
+
+/* ============ 修改成交 ============ */
+
+const updateSchema = z.object({
+  productId: z.string().cuid().nullish(),
+  studentName: z.string().trim().min(1).max(50).optional(),
+  studentPhone: z.string().max(20).nullish(),
+  dealAt: z.string().datetime().optional(),
+  amount: z.number().min(0).optional(),
+  rate: z.number().min(0).max(100).optional(),
+  commission: z.number().min(0).optional(),
+  note: z.string().max(500).nullish(),
+});
+
+router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
+  const input = updateSchema.parse(req.body);
+  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
+  await updateDeal(req.params.id, input, scopeOrgId);
+  writeAudit(req, { module: 'deal', action: 'update', targetId: req.params.id, after: input });
+  ok(res, { id: req.params.id });
+});
+
+/* ============ 审核（通过 / 驳回） ============ */
+
+const auditSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+  rejectReason: z.string().max(500).optional(),
+});
+
+router.post('/:id/audit', requirePerm(PERM.DEAL_AUDIT), async (req, res) => {
+  const { action, rejectReason } = auditSchema.parse(req.body);
+  const deal = await auditDeal(req.params.id, action, req.user!.id, rejectReason);
+  writeAudit(req, {
+    module: 'deal',
+    action: action === 'approve' ? 'approve' : 'reject',
+    targetId: req.params.id,
+    after: { status: deal.status, rejectReason: deal.rejectReason },
+  });
+  ok(res, { status: deal.status });
+});
+
+/* ============ 批量审核 ============ */
+
+const batchApproveSchema = z.object({
+  dealIds: z.array(z.string().cuid()).min(1).max(100),
+});
+
+router.post('/batch-approve', requirePerm(PERM.DEAL_AUDIT), async (req, res) => {
+  const { dealIds } = batchApproveSchema.parse(req.body);
+  const result = await batchApprove(dealIds, req.user!.id);
+  writeAudit(req, { module: 'deal', action: 'batchApprove', targetName: `${result.updated} 条` });
+  ok(res, result);
+});
+
+/* ============ 结算（仅管理员） ============ */
+
+const settleSchema = z.object({
+  dealIds: z.array(z.string().cuid()).min(1).max(100),
+  settledAt: z.string().datetime(),
+  settleNote: z.string().max(500).optional(),
+});
+
+router.post('/settle', requirePerm(PERM.DEAL_SETTLE), async (req, res) => {
+  const { dealIds, settledAt, settleNote } = settleSchema.parse(req.body);
+  const result = await settleDeals(dealIds, req.user!.id, settledAt, settleNote);
+  writeAudit(req, { module: 'deal', action: 'settle', targetName: `${result.updated} 条` });
+  ok(res, result);
+});
+
+/* ============ 撤销结算（仅管理员） ============ */
+
+const revokeSchema = z.object({
+  reason: z.string().trim().min(1, '撤销原因不能为空').max(500),
+});
+
+router.post('/:id/revoke-settle', requirePerm(PERM.DEAL_SETTLE), async (req, res) => {
+  const { reason } = revokeSchema.parse(req.body);
+  const deal = await revokeSettle(req.params.id, reason);
+  writeAudit(req, {
+    module: 'deal',
+    action: 'revokeSettle',
+    targetId: req.params.id,
+    after: { reason },
+  });
+  ok(res, { status: deal.status });
+});
+
+export default router;

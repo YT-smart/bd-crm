@@ -1,0 +1,296 @@
+// 留学合作机构管理系统 数据模型
+// 金额统一使用 Decimal，避免佣金计算出现分位误差。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  ORG
+}
+
+enum OrgStatus {
+  NEGOTIATING // 洽谈中
+  ACTIVE // 合作中
+  PAUSED // 暂停
+  TERMINATED // 终止
+}
+
+enum DealStatus {
+  PENDING_AUDIT // 待审核
+  REJECTED // 已驳回
+  PENDING_PAYMENT // 待到账
+  SETTLED // 已结算（锁定）
+}
+
+enum SettleCycle {
+  MONTHLY
+  QUARTERLY
+}
+
+enum SettlementStatus {
+  DRAFT
+  SETTLED
+  REVOKED
+}
+
+/// ---------------- 账号 ----------------
+
+model User {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  passwordHash   String
+  name           String
+  role           Role
+  orgId          String?
+  org            Org?      @relation("OrgMembers", fields: [orgId], references: [id], onDelete: SetNull)
+  phone          String?
+  email          String?
+  avatar         String?
+  isActive       Boolean   @default(true)
+  mustChangePwd  Boolean   @default(true)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  ownedOrgs     Org[]          @relation("OrgOwner")
+  createdDeals  Deal[]         @relation("DealCreator")
+  auditedDeals  Deal[]         @relation("DealAuditor")
+  settledDeals  Deal[]         @relation("DealSettler")
+  followUps     FollowUp[]
+  notifications Notification[]
+  loginLogs     LoginLog[]
+  attachments   Attachment[]
+
+  @@index([role])
+  @@index([orgId])
+}
+
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username  String
+  success   Boolean
+  reason    String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// ---------------- 合作机构 ----------------
+
+model Org {
+  id            String      @id @default(cuid())
+  name          String
+  logo          String?
+  intro         String?
+  province      String? // 省份全称，与地图 GeoJSON 名称一致，如「广东省」
+  city          String?
+  address       String?
+  website       String?
+  wechat        String?
+  foundedAt     DateTime?
+  scale         String?
+  businessTypes String[] // 留学申请 / 语言培训 / 背景提升 ...
+  countries     String[] // 覆盖国家
+  officeCities  String[]
+  tags          String[]
+  level         String? // A / B / C
+  status        OrgStatus   @default(NEGOTIATING)
+  defaultRate   Decimal     @db.Decimal(5, 2) // 默认佣金比例（%）
+  settleCycle   SettleCycle?
+  bankInfo      Json?
+  contractStart DateTime?
+  contractEnd   DateTime?
+  ownerId       String? // 负责 BD
+  owner         User?       @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  completeness  Int         @default(0)
+  deletedAt     DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  members     User[]        @relation("OrgMembers")
+  contacts    OrgContact[]
+  products    OrgProduct[]
+  deals       Deal[]
+  settlements Settlement[]
+  attachments Attachment[]
+  followUps   FollowUp[]
+
+  @@index([status])
+  @@index([province])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+model OrgContact {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  title     String?
+  phone     String?
+  wechat    String?
+  email     String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+}
+
+model OrgProduct {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name      String
+  type      String
+  priceMin  Decimal? @db.Decimal(12, 2)
+  priceMax  Decimal? @db.Decimal(12, 2)
+  rate      Decimal? @db.Decimal(5, 2) // 单独佣金比例（%），为空则使用机构默认值
+  note      String?
+  createdAt DateTime @default(now())
+
+  deals Deal[]
+
+  @@index([orgId])
+}
+
+/// ---------------- 成交与结算 ----------------
+
+model Deal {
+  id           String     @id @default(cuid())
+  orgId        String
+  org          Org        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  productId    String?
+  product      OrgProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  studentName  String
+  studentPhone String?
+  dealAt       DateTime
+  amount       Decimal    @db.Decimal(12, 2)
+  rate         Decimal    @db.Decimal(5, 2)
+  commission   Decimal    @db.Decimal(12, 2)
+  status       DealStatus @default(PENDING_AUDIT)
+  rejectReason String?
+  settlementId String?
+  settlement   Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  createdById  String
+  createdBy    User       @relation("DealCreator", fields: [createdById], references: [id])
+  auditedById  String?
+  auditedBy    User?      @relation("DealAuditor", fields: [auditedById], references: [id])
+  auditedAt    DateTime?
+  settledAt    DateTime? // 到账/结算日期
+  settledById  String?
+  settledBy    User?      @relation("DealSettler", fields: [settledById], references: [id])
+  receiptUrl   String? // 到账凭证
+  settleNote   String? // 结算备注（金额有出入时说明）
+  note         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  attachments Attachment[]
+
+  @@index([orgId, status])
+  @@index([status])
+  @@index([dealAt])
+  @@index([settledAt])
+}
+
+model Settlement {
+  id         String           @id @default(cuid())
+  orgId      String
+  org        Org              @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  periodFrom DateTime
+  periodTo   DateTime
+  total      Decimal          @db.Decimal(12, 2)
+  status     SettlementStatus @default(DRAFT)
+  proofUrl   String?
+  settledAt  DateTime?
+  createdAt  DateTime         @default(now())
+
+  deals Deal[]
+
+  @@index([orgId])
+}
+
+/// ---------------- 附件 / 跟进 / 通知 ----------------
+
+model Attachment {
+  id           String   @id @default(cuid())
+  orgId        String?
+  org          Org?     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  dealId       String?
+  deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  category     String // LICENSE / CONTRACT / QUALIFICATION / RECEIPT / OTHER
+  name         String
+  url          String // OSS object key
+  size         Int      @default(0)
+  mime         String?
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([orgId])
+  @@index([dealId])
+}
+
+model FollowUp {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  method    String // 电话 / 微信 / 面谈 / 邮件
+  content   String
+  followAt  DateTime
+  createdAt DateTime @default(now())
+
+  @@index([orgId, followAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  content   String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+/// ---------------- 操作日志 ----------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userName   String
+  role       Role?
+  module     String // auth / org / deal / settle / user / import / export
+  action     String
+  targetId   String?
+  targetName String?
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module, action])
+  @@index([userId])
+}

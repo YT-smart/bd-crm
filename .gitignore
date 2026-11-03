@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+uploads/
+
+# Old demo, reference only
+bd-crm/
+
+# Local env files
+.env.*
+!.env.example
