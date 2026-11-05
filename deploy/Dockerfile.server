@@ -1,0 +1,25 @@
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+
+# 仅复制依赖清单，利用构建缓存
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY apps/server/package.json apps/server/package.json
+COPY apps/web/package.json apps/web/package.json
+
+# 只装后端生产依赖；prisma CLI 与 tsx 用于迁移和写入演示数据
+RUN npm config set registry https://registry.npmmirror.com \
+ && npm install --omit=dev --workspace @bdcrm/server --include-workspace-root=false \
+ && npm install --no-save --no-audit --no-fund prisma@^6 tsx@^4
+
+COPY packages/shared packages/shared
+COPY apps/server/prisma apps/server/prisma
+RUN npx prisma generate --schema apps/server/prisma/schema.prisma
+
+# 本地构建好的后端产物
+COPY apps/server/dist apps/server/dist
+
+WORKDIR /app/apps/server
+EXPOSE 3100
+CMD ["node", "dist/index.js"]

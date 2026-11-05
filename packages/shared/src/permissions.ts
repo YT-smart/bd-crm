@@ -31,15 +31,12 @@ const ALL_PERMS = Object.values(PERM) as Perm[];
 
 export const ROLE_PERMS: Record<Role, readonly Perm[]> = {
   ADMIN: ALL_PERMS.filter((p) => p !== PERM.DASHBOARD_ORG && p !== PERM.MY_ORG),
+  /** 员工：只读（查看 + 导出），不能新增 / 编辑 / 审核 */
   STAFF: [
     PERM.DASHBOARD_GLOBAL,
     PERM.ORG_VIEW,
-    PERM.ORG_CREATE,
-    PERM.ORG_UPDATE,
     PERM.ORG_EXPORT,
     PERM.DEAL_VIEW,
-    PERM.DEAL_CREATE,
-    PERM.DEAL_AUDIT,
   ],
   ORG: [PERM.DASHBOARD_ORG, PERM.MY_ORG, PERM.DEAL_VIEW, PERM.DEAL_CREATE],
 };

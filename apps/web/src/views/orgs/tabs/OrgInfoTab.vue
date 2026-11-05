@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
 import {
-  NForm, NFormItem, NInput, NSelect, NInputNumber,
-  NDatePicker, NDynamicTags, useMessage,
+  NForm, NFormItem, NInput, NSelect, NDynamicTags, useMessage,
+  type SelectOption, type SelectGroupOption,
 } from 'naive-ui';
 import { Save } from 'lucide-vue-next';
 import {
-  BUSINESS_TYPES, COUNTRIES, PROVINCES, ORG_LEVELS,
-  shortProvinceName, type OrgDetail,
+  BUSINESS_TYPES, COUNTRIES, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
+  shortProvinceName, type OrgDetail, type Province,
 } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
-const props = defineProps<{ org: OrgDetail }>();
+const props = withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean }>(), { canEdit: true });
 const emit = defineEmits<{ updated: [] }>();
 const message = useMessage();
 const saving = ref(false);
@@ -22,9 +22,10 @@ const isOrgUser = computed(() => useAuthStore().user?.role === 'ORG');
 
 const form = reactive({
   name: '',
+  advantage: '',
   intro: '',
   province: null as string | null,
-  city: '',
+  city: null as string | null,
   address: '',
   website: '',
   wechat: '',
@@ -38,9 +39,10 @@ const form = reactive({
 
 function resetForm() {
   form.name = props.org.name;
+  form.advantage = props.org.advantage ?? '';
   form.intro = props.org.intro ?? '';
   form.province = props.org.province;
-  form.city = props.org.city ?? '';
+  form.city = props.org.city || null;
   form.address = props.org.address ?? '';
   form.website = props.org.website ?? '';
   form.wechat = props.org.wechat ?? '';
@@ -59,13 +61,42 @@ const businessTypeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
 const countryOptions = COUNTRIES.map((c) => ({ label: c, value: c }));
 const levelOptions = ORG_LEVELS.map((l) => ({ label: `${l} 级`, value: l }));
 
+/** 全部城市按省份分组 */
+const groupedCityOptions: SelectGroupOption[] = PROVINCES.map((p) => ({
+  type: 'group',
+  key: p,
+  label: shortProvinceName(p),
+  children: CITIES_BY_PROVINCE[p].map((c) => ({ label: c, value: c })),
+}));
+
+/** 总部城市：选了省份只列该省城市，否则列全部 */
+const hqCityOptions = computed<(SelectOption | SelectGroupOption)[]>(() =>
+  form.province
+    ? CITIES_BY_PROVINCE[form.province as Province].map((c) => ({ label: c, value: c }))
+    : groupedCityOptions,
+);
+
+// 切换省份时，清空不属于该省的总部城市
+watch(() => form.province, (p) => {
+  if (form.city && p && PROVINCE_OF_CITY[form.city] !== p) form.city = null;
+});
+
+// 选择总部城市：自动带出省份，并同步到办公城市
+watch(() => form.city, (c) => {
+  if (!c) return;
+  const p = PROVINCE_OF_CITY[c];
+  if (p && form.province !== p) form.province = p;
+  if (!form.officeCities.includes(c)) form.officeCities = [c, ...form.officeCities];
+});
+
 const isDirty = computed(() => {
   const o = props.org;
   return (
     form.name !== o.name ||
+    form.advantage !== (o.advantage ?? '') ||
     form.intro !== (o.intro ?? '') ||
     form.province !== o.province ||
-    form.city !== (o.city ?? '') ||
+    (form.city ?? '') !== (o.city ?? '') ||
     form.address !== (o.address ?? '') ||
     form.website !== (o.website ?? '') ||
     form.wechat !== (o.wechat ?? '') ||
@@ -87,6 +118,7 @@ async function save() {
   try {
     await orgApi.update(props.org.id, {
       ...(isOrgUser.value ? {} : { name: form.name, tags: form.tags, level: form.level }),
+      advantage: form.advantage.trim() || null,
       intro: form.intro || null,
       province: form.province,
       city: form.city || null,
@@ -110,16 +142,23 @@ async function save() {
 
 <template>
   <div class="info-tab">
-    <NForm label-placement="left" label-width="90" :show-feedback="false">
+    <NForm label-placement="left" label-width="90" :show-feedback="false" :disabled="!canEdit">
       <div class="form-grid">
         <NFormItem label="机构名称" required>
-          <NInput v-model:value="form.name" placeholder="机构名称" maxlength="100" :disabled="isOrgUser" />
+          <NInput v-model:value="form.name" placeholder="机构名称" maxlength="100" :disabled="isOrgUser || !canEdit" />
         </NFormItem>
         <NFormItem label="所在省份">
           <NSelect v-model:value="form.province" :options="provinceOptions" clearable filterable placeholder="选择省份" />
         </NFormItem>
-        <NFormItem label="所在城市">
-          <NInput v-model:value="form.city" placeholder="城市" maxlength="50" />
+        <NFormItem label="总部城市">
+          <NSelect
+            id="org-info-city"
+            v-model:value="form.city"
+            :options="hqCityOptions"
+            clearable
+            filterable
+            placeholder="选择总部城市"
+          />
         </NFormItem>
         <NFormItem label="详细地址">
           <NInput v-model:value="form.address" placeholder="详细地址" maxlength="200" />
@@ -154,10 +193,27 @@ async function save() {
           />
         </NFormItem>
         <NFormItem label="办公城市" class="full">
-          <NDynamicTags v-model:value="form.officeCities" />
+          <NSelect
+            id="org-info-office-cities"
+            v-model:value="form.officeCities"
+            :options="groupedCityOptions"
+            multiple
+            filterable
+            :max-tag-count="12"
+            placeholder="选择办公城市（总部城市会自动加入）"
+          />
         </NFormItem>
         <NFormItem v-if="!isOrgUser" label="标签" class="full">
-          <NDynamicTags v-model:value="form.tags" :max="10" />
+          <NDynamicTags v-model:value="form.tags" :max="10" :disabled="!canEdit" />
+        </NFormItem>
+        <NFormItem label="机构优势" class="full">
+          <NInput
+            id="org-info-advantage"
+            v-model:value="form.advantage"
+            placeholder="一句话介绍机构优势，如：专注英港新硕士申请，名校录取率行业领先"
+            maxlength="100"
+            show-count
+          />
         </NFormItem>
         <NFormItem label="机构简介" class="full">
           <NInput v-model:value="form.intro" type="textarea" placeholder="机构简介" :autosize="{ minRows: 3, maxRows: 6 }" maxlength="2000" show-count />
@@ -165,7 +221,7 @@ async function save() {
       </div>
     </NForm>
 
-    <div class="actions">
+    <div v-if="canEdit" class="actions">
       <button class="btn" :disabled="!isDirty || saving" @click="save">
         <Save :size="14" /> {{ saving ? '保存中...' : '保存' }}
       </button>

@@ -10,6 +10,7 @@ import OrgInfoTab from './tabs/OrgInfoTab.vue';
 import OrgContactsTab from './tabs/OrgContactsTab.vue';
 import OrgProductsTab from './tabs/OrgProductsTab.vue';
 import OrgAttachmentsTab from './tabs/OrgAttachmentsTab.vue';
+import OrgDealsTab from './tabs/OrgDealsTab.vue';
 
 const message = useMessage();
 const auth = useAuthStore();
@@ -70,7 +71,7 @@ onMounted(loadOrg);
     <div v-if="org && !loading" class="card tabs-card rise-in" style="animation-delay: 60ms">
       <NTabs v-model:value="activeTab" type="line" animated>
         <NTabPane name="overview" tab="概览">
-          <OrgOverviewTab :org="org" @refresh="loadOrg" />
+          <OrgOverviewTab :org="org" @refresh="loadOrg" @navigate="(t) => (activeTab = t)" />
         </NTabPane>
         <NTabPane name="info" tab="基本资料">
           <OrgInfoTab :org="org" @updated="loadOrg" />
@@ -79,7 +80,10 @@ onMounted(loadOrg);
           <OrgContactsTab :org-id="org.id" :contacts="org.contacts" @refresh="loadOrg" />
         </NTabPane>
         <NTabPane name="products" tab="产品与报价">
-          <OrgProductsTab :org-id="org.id" :products="org.products" @refresh="loadOrg" />
+          <OrgProductsTab :org-id="org.id" :products="org.products" :default-rate="org.defaultRate" @refresh="loadOrg" />
+        </NTabPane>
+        <NTabPane name="deals" tab="成交记录">
+          <OrgDealsTab :org-id="org.id" :stats="org.stats" />
         </NTabPane>
         <NTabPane name="attachments" tab="附件资料">
           <OrgAttachmentsTab :org-id="org.id" :can-edit="true" />

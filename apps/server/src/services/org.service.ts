@@ -3,6 +3,8 @@ import {
   APPROVED_DEAL_STATUSES,
   DealStatus,
   calcCompleteness,
+  normalizeCityKeyword,
+  PROVINCE_OF_CITY,
   type OrgListItem,
   type OrgListQuery,
   type OrgDetail,
@@ -30,6 +32,9 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
     where.OR = [
       { name: { contains: kw, mode: 'insensitive' } },
       { city: { contains: kw, mode: 'insensitive' } },
+      { province: { contains: kw } },
+      // 办公城市：任一办公地点命中即可（兼容输入「杭州市」）
+      { officeCities: { has: normalizeCityKeyword(kw) } },
       { contacts: { some: { OR: [{ name: { contains: kw } }, { phone: { contains: kw } }] } } },
     ];
   }
@@ -200,6 +205,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     id: org.id,
     name: org.name,
     logo: org.logo,
+    advantage: org.advantage,
     intro: org.intro,
     province: org.province,
     city: org.city,
@@ -248,6 +254,9 @@ interface CreateOrgInput {
 export async function createOrg(input: CreateOrgInput) {
   const existing = await prisma.org.findFirst({ where: { name: input.name, deletedAt: null } });
   if (existing) throw new AppError(409, `机构"${input.name}"已存在`);
+  if (input.city && input.province && PROVINCE_OF_CITY[input.city] !== input.province) {
+    throw new AppError(400, `总部城市「${input.city}」不属于${input.province}`);
+  }
 
   let plainPassword: string | null = null;
   if (input.createAccount) {
@@ -263,6 +272,7 @@ export async function createOrg(input: CreateOrgInput) {
         name: input.name,
         province: input.province ?? null,
         city: input.city ?? null,
+        officeCities: input.city ? [input.city] : [],
         defaultRate: input.defaultRate,
         ownerId: input.ownerId ?? null,
         completeness: 0,
@@ -301,6 +311,17 @@ export async function updateOrg(orgId: string, input: Partial<Prisma.OrgUnchecke
   if (input.name && input.name !== org.name) {
     const dup = await prisma.org.findFirst({ where: { name: input.name as string, deletedAt: null, id: { not: orgId } } });
     if (dup) throw new AppError(409, `机构"${input.name}"已存在`);
+  }
+
+  // 省市一致性校验 + 总部城市自动并入办公城市
+  const province = (input.province !== undefined ? input.province : org.province) as string | null;
+  const city = (input.city !== undefined ? input.city : org.city) as string | null;
+  if (city && province && PROVINCE_OF_CITY[city] !== province) {
+    throw new AppError(400, `总部城市「${city}」不属于${province}`);
+  }
+  if (input.city !== undefined || input.officeCities !== undefined) {
+    const offices = input.officeCities ?? org.officeCities;
+    input.officeCities = city && !offices.includes(city) ? [city, ...offices] : offices;
   }
 
   const updated = await prisma.org.update({ where: { id: orgId }, data: input });

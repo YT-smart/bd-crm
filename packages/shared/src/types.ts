@@ -227,6 +227,7 @@ export interface OrgDetail {
   id: string;
   name: string;
   logo: string | null;
+  advantage: string | null;
   intro: string | null;
   province: string | null;
   city: string | null;
@@ -299,6 +300,7 @@ export interface OrgCreateResult {
 export interface OrgUpdateInput {
   name?: string;
   logo?: string | null;
+  advantage?: string | null;
   intro?: string | null;
   province?: string | null;
   city?: string | null;

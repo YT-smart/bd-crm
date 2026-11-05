@@ -14,7 +14,7 @@ import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
-const props = defineProps<{ org: OrgDetail }>();
+const props = withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean }>(), { canEdit: true });
 const emit = defineEmits<{ updated: [] }>();
 const message = useMessage();
 const auth = useAuthStore();
@@ -80,7 +80,7 @@ async function save() {
 
 <template>
   <div class="coop-tab">
-    <NForm label-placement="left" label-width="100" :show-feedback="false">
+    <NForm label-placement="left" label-width="100" :show-feedback="false" :disabled="!canEdit">
       <h3 class="section-title">合作状态</h3>
       <div class="form-grid">
         <NFormItem label="合作状态">
@@ -123,7 +123,7 @@ async function save() {
       </div>
     </NForm>
 
-    <div class="actions">
+    <div v-if="canEdit" class="actions">
       <button class="btn" :disabled="saving" @click="save">
         <Save :size="14" /> {{ saving ? '保存中...' : '保存' }}
       </button>

@@ -8,7 +8,7 @@ import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { date } from '@/utils/format';
 
-const props = defineProps<{ orgId: string }>();
+const props = withDefaults(defineProps<{ orgId: string; canEdit?: boolean }>(), { canEdit: true });
 const message = useMessage();
 const dialog = useDialog();
 const auth = useAuthStore();
@@ -101,7 +101,7 @@ function handleDelete(fu: OrgFollowUpItem) {
   <div>
     <div class="tab-header">
       <span class="text-2">共 {{ followUps.length }} 条跟进记录</span>
-      <button class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加跟进</button>
+      <button v-if="canEdit" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加跟进</button>
     </div>
 
     <NEmpty v-if="!followUps.length && !loading" description="暂无跟进记录" style="margin-top: 40px" />
@@ -115,7 +115,7 @@ function handleDelete(fu: OrgFollowUpItem) {
           <div class="fu-header">
             <span class="fu-method">{{ fu.method }}</span>
             <button
-              v-if="auth.user?.id === fu.userId || auth.user?.role === 'ADMIN'"
+              v-if="canEdit && (auth.user?.id === fu.userId || auth.user?.role === 'ADMIN')"
               class="icon-btn danger"
               title="删除"
               @click="handleDelete(fu)"

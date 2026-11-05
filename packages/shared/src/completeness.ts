@@ -5,6 +5,7 @@
 export interface CompletenessInput {
   name?: string | null;
   logo?: string | null;
+  advantage?: string | null;
   intro?: string | null;
   province?: string | null;
   city?: string | null;
@@ -29,9 +30,9 @@ const filled = (v?: string | null) => typeof v === 'string' && v.trim().length >
 
 const RULES: Rule[] = [
   { label: '机构名称', weight: 10, test: (o) => filled(o.name) },
-  { label: 'Logo', weight: 5, test: (o) => filled(o.logo) },
+  { label: '机构优势', weight: 5, test: (o) => filled(o.advantage) },
   { label: '机构简介', weight: 10, test: (o) => filled(o.intro) },
-  { label: '所在地区', weight: 10, test: (o) => filled(o.province) && filled(o.city) },
+  { label: '总部城市', weight: 10, test: (o) => filled(o.province) && filled(o.city) },
   { label: '详细地址', weight: 5, test: (o) => filled(o.address) },
   { label: '官网', weight: 5, test: (o) => filled(o.website) },
   { label: '公众号', weight: 5, test: (o) => filled(o.wechat) },

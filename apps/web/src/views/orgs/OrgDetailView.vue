@@ -100,7 +100,7 @@ const canDelete = computed(() => auth.can('org:delete'));
         </div>
         <div class="meta-row">
           <span v-if="org.province || org.city" class="meta-item">
-            {{ org.province }} {{ org.city }}
+            总部: {{ [org.province, org.city].filter(Boolean).join(' ') }}
           </span>
           <span class="meta-item">佣金: {{ org.defaultRate }}%</span>
         </div>
@@ -127,19 +127,25 @@ const canDelete = computed(() => auth.can('org:delete'));
     <div v-if="org && !loading" class="card tabs-card rise-in" style="animation-delay: 60ms">
       <NTabs v-model:value="activeTab" type="line" animated>
         <NTabPane name="overview" tab="概览">
-          <OrgOverviewTab :org="org" @refresh="loadOrg" />
+          <OrgOverviewTab :org="org" @refresh="loadOrg" @navigate="(t) => (activeTab = t)" />
         </NTabPane>
         <NTabPane name="info" tab="基本资料">
-          <OrgInfoTab :org="org" @updated="loadOrg" />
+          <OrgInfoTab :org="org" :can-edit="canEdit" @updated="loadOrg" />
         </NTabPane>
         <NTabPane name="contacts" tab="联系人">
-          <OrgContactsTab :org-id="org.id" :contacts="org.contacts" @refresh="loadOrg" />
+          <OrgContactsTab :org-id="org.id" :contacts="org.contacts" :can-edit="canEdit" @refresh="loadOrg" />
         </NTabPane>
         <NTabPane name="products" tab="产品与报价">
-          <OrgProductsTab :org-id="org.id" :products="org.products" @refresh="loadOrg" />
+          <OrgProductsTab
+            :org-id="org.id"
+            :products="org.products"
+            :default-rate="org.defaultRate"
+            :can-edit="canEdit"
+            @refresh="loadOrg"
+          />
         </NTabPane>
         <NTabPane name="cooperation" tab="合作信息">
-          <OrgCooperationTab :org="org" @updated="loadOrg" />
+          <OrgCooperationTab :org="org" :can-edit="canEdit" @updated="loadOrg" />
         </NTabPane>
         <NTabPane name="deals" tab="成交记录">
           <OrgDealsTab :org-id="org.id" :stats="org.stats" />
@@ -148,7 +154,7 @@ const canDelete = computed(() => auth.can('org:delete'));
           <OrgAttachmentsTab :org-id="org.id" :can-edit="canEdit" />
         </NTabPane>
         <NTabPane name="follow-ups" tab="跟进记录">
-          <OrgFollowUpsTab :org-id="org.id" />
+          <OrgFollowUpsTab :org-id="org.id" :can-edit="canEdit" />
         </NTabPane>
       </NTabs>
     </div>

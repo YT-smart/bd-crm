@@ -10,12 +10,8 @@ declare module 'vue-router' {
     public?: boolean;
     /** 需要的权限点（满足其一） */
     perm?: Perm | Perm[];
-    /** 占位页提示：所属开发阶段 */
-    phase?: string;
   }
 }
-
-const Placeholder = () => import('@/views/common/PlaceholderView.vue');
 
 const routes: RouteRecordRaw[] = [
   {

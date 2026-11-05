@@ -11,6 +11,7 @@ import {
   ORG_STATUS_LABEL,
   SETTLE_CYCLE_LABEL,
   AttachmentCategory,
+  isCity,
 } from '@bdcrm/shared';
 import type { Request } from 'express';
 import { ok, Errors } from '../lib/http';
@@ -53,6 +54,10 @@ router.param('id', (req, _res, next, id) => {
   if (req.user?.role === 'ORG' && req.user.orgId !== id) throw Errors.forbidden();
   next();
 });
+
+/** 城市只能从内置城市库中选择，防止随意填写 */
+const citySchema = z.string().trim().refine(isCity, '请从下拉列表中选择城市');
+const optionalCity = z.preprocess((v) => (v === '' ? null : v), citySchema.nullish());
 
 /* ============ 列表与筛选 ============ */
 
@@ -103,12 +108,7 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
 /* ============ 详情 ============ */
 
 router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
-  const detail = await getOrgDetail(req.params.id);
-  if (req.user!.role === 'ORG') {
-    // 产品佣金比例由员工维护，不对机构账号展示
-    detail.products = detail.products.map((p) => ({ ...p, rate: null }));
-  }
-  ok(res, detail);
+  ok(res, await getOrgDetail(req.params.id));
 });
 
 /* ============ 新增机构 ============ */
@@ -116,7 +116,7 @@ router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
 const createSchema = z.object({
   name: z.string().trim().min(2, '名称至少 2 个字').max(100),
   province: z.enum(PROVINCES).nullish(),
-  city: z.string().trim().max(50).nullish(),
+  city: optionalCity,
   defaultRate: z.number().min(0).max(100),
   ownerId: z.string().cuid().nullish(),
   createAccount: z.boolean().optional(),
@@ -150,9 +150,10 @@ router.post('/', requirePerm(PERM.ORG_CREATE), async (req, res) => {
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   logo: z.string().max(500).nullish(),
+  advantage: z.string().trim().max(100, '机构优势请控制在 100 字以内').nullish(),
   intro: z.string().max(2000).nullish(),
   province: z.enum(PROVINCES).nullish(),
-  city: z.string().trim().max(50).nullish(),
+  city: optionalCity,
   address: z.string().max(200).nullish(),
   website: z
     .string()
@@ -166,7 +167,7 @@ const updateSchema = z.object({
   scale: z.string().max(50).nullish(),
   businessTypes: z.array(z.enum(BUSINESS_TYPES)).optional(),
   countries: z.array(z.enum(COUNTRIES)).optional(),
-  officeCities: z.array(z.string().max(50)).max(30).optional(),
+  officeCities: z.array(citySchema).max(30).optional(),
   tags: z.array(z.string().max(30)).max(10).optional(),
   level: z.enum(ORG_LEVELS).nullish(),
   status: z.nativeEnum(OrgStatus).optional(),
@@ -185,7 +186,7 @@ const updateSchema = z.object({
 
 /** 机构账号只能维护自己的基本资料与收款账户，佣金/等级/状态/负责 BD/合同等由员工维护 */
 const ORG_EDITABLE = new Set([
-  'logo', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale',
+  'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale',
   'businessTypes', 'countries', 'officeCities', 'bankInfo',
 ]);
 
@@ -260,26 +261,18 @@ const productSchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
-/** 机构账号不能自行设置产品佣金比例 */
-function stripOrgRate<T extends { rate?: unknown }>(req: { user?: { role: string } }, input: T): T {
-  if (req.user?.role === 'ORG') {
-    const { rate: _rate, ...rest } = input;
-    return rest as T;
-  }
-  return input;
-}
-
 router.post('/:id/products', requirePerm(...CAN_EDIT), async (req, res) => {
   const orgId = req.params.id;
-  const input = stripOrgRate(req, productSchema.parse(req.body));
+  const input = productSchema.parse(req.body);
   const product = await addProduct(orgId, input);
   writeAudit(req, { module: 'org', action: 'addProduct', targetId: orgId, after: input });
   ok(res, { id: product.id }, 201);
 });
 
 router.put('/:id/products/:productId', requirePerm(...CAN_EDIT), async (req, res) => {
-  const input = stripOrgRate(req, productSchema.partial().parse(req.body));
+  const input = productSchema.partial().parse(req.body);
   await updateProduct(req.params.id, req.params.productId, input);
+  writeAudit(req, { module: 'org', action: 'updateProduct', targetId: req.params.id, after: input });
   ok(res, null);
 });
 

@@ -96,6 +96,7 @@ model Org {
   id            String      @id @default(cuid())
   name          String
   logo          String?
+  advantage     String? // 机构优势，一句话
   intro         String?
   province      String? // 省份全称，与地图 GeoJSON 名称一致，如「广东省」
   city          String?

@@ -97,6 +97,7 @@ export const BUSINESS_TYPES = [
   '低龄留学',
   '游学营地',
   '移民咨询',
+  '其他',
 ] as const;
 
 export const COUNTRIES = [

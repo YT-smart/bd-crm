@@ -6,7 +6,7 @@ import type { OrgContactItem, ContactInput } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 
-const props = defineProps<{ orgId: string; contacts: OrgContactItem[] }>();
+const props = withDefaults(defineProps<{ orgId: string; contacts: OrgContactItem[]; canEdit?: boolean }>(), { canEdit: true });
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
 const dialog = useDialog();
@@ -92,7 +92,7 @@ function handleDelete(c: OrgContactItem) {
   <div>
     <div class="tab-header">
       <span class="text-2">共 {{ contacts.length }} 个联系人</span>
-      <button class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加联系人</button>
+      <button v-if="canEdit" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加联系人</button>
     </div>
 
     <NEmpty v-if="!contacts.length" description="暂无联系人" style="margin-top: 40px" />
@@ -111,7 +111,7 @@ function handleDelete(c: OrgContactItem) {
             <span v-if="c.email">{{ c.email }}</span>
           </div>
         </div>
-        <div class="contact-actions">
+        <div v-if="canEdit" class="contact-actions">
           <button class="icon-btn" title="编辑" @click="openEdit(c)"><Pencil :size="14" /></button>
           <button class="icon-btn danger" title="删除" @click="handleDelete(c)"><Trash2 :size="14" /></button>
         </div>

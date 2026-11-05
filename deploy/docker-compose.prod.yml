@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bdcrm-postgres
+    # CentOS 7 老内核 / libseccomp 下，默认 seccomp 配置会导致 postgres 写文件失败
+    security_opt:
+      - seccomp:unconfined
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bdcrm
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: bd_crm
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    volumes:
+      - bdcrm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bdcrm -d bd_crm"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 300m
+
+  server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.server
+    image: bdcrm-server:latest
+    container_name: bdcrm-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3100"
+      DATABASE_URL: postgresql://bdcrm:${DB_PASSWORD}@postgres:5432/bd_crm?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      # 当前走 HTTP 访问；配好域名与 HTTPS 后改为 true
+      COOKIE_SECURE: "false"
+      UPLOAD_DIR: uploads
+    volumes:
+      - bdcrm_uploads:/app/apps/server/uploads
+    mem_limit: 300m
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: bdcrm-web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./apps/web/dist:/usr/share/nginx/html:ro
+    mem_limit: 64m
+
+volumes:
+  bdcrm_pgdata:
+  bdcrm_uploads:

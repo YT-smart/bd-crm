@@ -6,13 +6,14 @@ import { BUSINESS_TYPES, type OrgProductItem, type ProductInput } from '@bdcrm/s
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { money } from '@/utils/format';
-import { useAuthStore } from '@/stores/auth';
 
-const props = defineProps<{ orgId: string; products: OrgProductItem[] }>();
+const props = withDefaults(
+  defineProps<{ orgId: string; products: OrgProductItem[]; defaultRate: number; canEdit?: boolean }>(),
+  { canEdit: true },
+);
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
 const dialog = useDialog();
-const isOrgUser = useAuthStore().user?.role === 'ORG';
 
 const showForm = ref(false);
 const editing = ref<OrgProductItem | null>(null);
@@ -91,7 +92,7 @@ function handleDelete(p: OrgProductItem) {
   <div>
     <div class="tab-header">
       <span class="text-2">共 {{ products.length }} 个产品</span>
-      <button class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加产品</button>
+      <button v-if="canEdit" id="product-add" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加产品</button>
     </div>
 
     <NEmpty v-if="!products.length" description="暂无产品与报价" style="margin-top: 40px" />
@@ -113,11 +114,12 @@ function handleDelete(p: OrgProductItem) {
           </div>
           <div class="detail-row">
             <span class="text-3">佣金比例</span>
-            <span class="num">{{ p.rate != null ? `${p.rate}%` : '使用默认' }}</span>
+            <span v-if="p.rate != null" class="num rate">{{ p.rate }}%</span>
+            <span v-else class="num">{{ defaultRate }}%<span class="text-3 rate-hint">（默认）</span></span>
           </div>
         </div>
-        <div v-if="p.note" class="product-note text-3">{{ p.note }}</div>
-        <div class="product-actions">
+        <div v-if="p.note" class="product-note"><span class="text-3">备注：</span>{{ p.note }}</div>
+        <div v-if="canEdit" class="product-actions">
           <button class="icon-btn" title="编辑" @click="openEdit(p)"><Pencil :size="14" /></button>
           <button class="icon-btn danger" title="删除" @click="handleDelete(p)"><Trash2 :size="14" /></button>
         </div>
@@ -140,8 +142,16 @@ function handleDelete(p: OrgProductItem) {
             <NInputNumber v-model:value="form.priceMax" :min="0" :precision="0" placeholder="最高价" style="width: 100%" />
           </NFormItem>
         </div>
-        <NFormItem v-if="!isOrgUser" label="佣金比例">
-          <NInputNumber v-model:value="form.rate" :min="0" :max="100" :precision="1" placeholder="空则使用默认" style="width: 160px">
+        <NFormItem label="佣金比例">
+          <NInputNumber
+            id="product-rate"
+            v-model:value="form.rate"
+            :min="0"
+            :max="100"
+            :precision="1"
+            :placeholder="`留空则按默认 ${defaultRate}%`"
+            style="width: 200px"
+          >
             <template #suffix>%</template>
           </NInputNumber>
         </NFormItem>
@@ -208,14 +218,19 @@ function handleDelete(p: OrgProductItem) {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.5;
+  color: var(--text-2);
+  word-break: break-all;
 }
+.rate { color: var(--brand); font-weight: 600; }
+.rate-hint { font-size: 12px; }
 .product-actions {
-  position: absolute;
-  top: 12px;
-  right: -4px;
   display: flex;
+  justify-content: flex-end;
   gap: 2px;
-  opacity: 0;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  opacity: 0.55;
   transition: opacity 0.15s;
 }
 .product-card:hover .product-actions {

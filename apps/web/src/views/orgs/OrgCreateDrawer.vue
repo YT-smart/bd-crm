@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import {
   NDrawer, NDrawerContent, NForm, NFormItem, NModal,
   NInput, NInputNumber, NSelect, NSwitch, NRadioGroup, NRadio, useMessage,
 } from 'naive-ui';
 import { Check, Copy, Info, KeyRound, ShieldCheck } from 'lucide-vue-next';
-import { PROVINCES, shortProvinceName, type OrgCreateResult } from '@bdcrm/shared';
+import {
+  PROVINCES, CITIES_BY_PROVINCE, PROVINCE_OF_CITY, shortProvinceName,
+  type OrgCreateResult, type Province,
+} from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 
@@ -17,7 +20,7 @@ const saving = ref(false);
 const form = reactive({
   name: '',
   province: null as string | null,
-  city: '',
+  city: null as string | null,
   defaultRate: 15,
   createAccount: false,
   accountUsername: '',
@@ -27,6 +30,22 @@ const form = reactive({
 });
 
 const provinceOptions = PROVINCES.map((p) => ({ label: shortProvinceName(p), value: p }));
+const cityOptions = computed(() =>
+  form.province
+    ? CITIES_BY_PROVINCE[form.province as Province].map((c) => ({ label: c, value: c }))
+    : PROVINCES.map((p) => ({
+        type: 'group' as const,
+        key: p,
+        label: shortProvinceName(p),
+        children: CITIES_BY_PROVINCE[p].map((c) => ({ label: c, value: c })),
+      })),
+);
+watch(() => form.province, (p) => {
+  if (form.city && p && PROVINCE_OF_CITY[form.city] !== p) form.city = null;
+});
+watch(() => form.city, (c) => {
+  if (c && PROVINCE_OF_CITY[c] && form.province !== PROVINCE_OF_CITY[c]) form.province = PROVINCE_OF_CITY[c];
+});
 
 const usernameError = computed(() => {
   const v = form.accountUsername.trim();
@@ -44,7 +63,7 @@ const passwordError = computed(() => {
 
 function reset() {
   Object.assign(form, {
-    name: '', province: null, city: '', defaultRate: 15,
+    name: '', province: null, city: null, defaultRate: 15,
     createAccount: false, accountUsername: '', accountName: '', pwdMode: 'auto', accountPassword: '',
   });
 }
@@ -89,7 +108,7 @@ async function submit() {
     const res = await orgApi.create({
       name: form.name.trim(),
       province: form.province,
-      city: form.city.trim() || undefined,
+      city: form.city || undefined,
       defaultRate: form.defaultRate,
       createAccount: form.createAccount,
       accountUsername: form.createAccount ? form.accountUsername.trim() : undefined,
@@ -124,8 +143,8 @@ async function submit() {
           <NFormItem label="所在省份" class="col">
             <NSelect v-model:value="form.province" :options="provinceOptions" clearable filterable placeholder="选择省份" />
           </NFormItem>
-          <NFormItem label="所在城市" class="col">
-            <NInput v-model:value="form.city" placeholder="城市" maxlength="50" />
+          <NFormItem label="总部城市" class="col">
+            <NSelect id="org-create-city" v-model:value="form.city" :options="cityOptions" clearable filterable placeholder="选择城市" />
           </NFormItem>
         </div>
         <NFormItem label="默认佣金比例">

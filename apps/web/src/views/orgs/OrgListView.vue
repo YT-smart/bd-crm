@@ -257,7 +257,7 @@ const pagination = computed(() => ({
 <template>
   <div class="page">
     <div class="card toolbar rise-in">
-      <NInput id="org-search" v-model:value="filters.keyword" placeholder="搜索机构名称、城市、联系人、电话" clearable class="search">
+      <NInput id="org-search" v-model:value="filters.keyword" placeholder="搜索机构名称、城市（含办公城市）、联系人、电话" clearable class="search">
         <template #prefix><Search :size="16" :stroke-width="1.75" class="text-3" /></template>
       </NInput>
       <NSelect
