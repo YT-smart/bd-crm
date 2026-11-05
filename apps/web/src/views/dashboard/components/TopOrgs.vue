@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NSkeleton } from 'naive-ui';
-import type { TopOrgItem } from '@bdcrm/shared';
+import type { DashboardRange, TopOrgItem } from '@bdcrm/shared';
 import { money, moneyShort, num } from '@/utils/format';
 
-const props = defineProps<{ data: TopOrgItem[]; rangeLabel: string; loading?: boolean }>();
+const props = defineProps<{ data: TopOrgItem[]; loading?: boolean }>();
+/** 时间范围只影响这张卡，所以切换放在卡片里，而不是页面顶部 */
+const range = defineModel<DashboardRange>('range', { default: 'month' });
+const RANGES: { value: DashboardRange; label: string }[] = [
+  { value: 'month', label: '本月' },
+  { value: 'quarter', label: '本季度' },
+  { value: 'year', label: '本年' },
+];
 
 const max = computed(() => Math.max(1, ...props.data.map((d) => d.commission)));
 </script>
@@ -14,7 +21,19 @@ const max = computed(() => Math.max(1, ...props.data.map((d) => d.commission)));
     <div class="card-header">
       <div>
         <div class="card-title">机构佣金贡献 Top 10</div>
-        <div class="card-sub">{{ rangeLabel }} · 按已核实成交的佣金排序</div>
+        <div class="card-sub">按已核实成交的佣金排序</div>
+      </div>
+      <div class="segmented seg-sm" role="tablist" aria-label="时间范围">
+        <button
+          v-for="r in RANGES"
+          :key="r.value"
+          role="tab"
+          :aria-selected="range === r.value"
+          :class="{ active: range === r.value }"
+          @click="range = r.value"
+        >
+          {{ r.label }}
+        </button>
       </div>
     </div>
     <div class="card-body">
@@ -39,6 +58,14 @@ const max = computed(() => Math.max(1, ...props.data.map((d) => d.commission)));
 </template>
 
 <style scoped>
+.seg-sm {
+  flex-shrink: 0;
+  padding: 2px;
+}
+.seg-sm button {
+  font-size: 12px;
+  padding: 2px 8px;
+}
 .top-list {
   list-style: none;
   margin: 0;
