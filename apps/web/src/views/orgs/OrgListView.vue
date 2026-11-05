@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { NDataTable, NInput, NSelect, useMessage, type DataTableColumns, type DataTableSortState } from 'naive-ui';
+import { NDataTable, NInput, NSelect, useMessage, type DataTableColumns, type DataTableSortState, type SelectGroupOption } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
 import { Download, MapPin, Plus, RotateCcw, Search, X } from 'lucide-vue-next';
 import {
+  COUNTRIES,
+  COUNTRY_GROUPS,
   ORG_LEVELS,
   ORG_STATUS_LABEL,
   PROVINCES,
@@ -33,18 +35,21 @@ function fromQuery() {
   const province = s('province');
   const status = s('status');
   const level = s('level');
+  const country = s('country');
   return {
     keyword: s('keyword') ?? '',
     province: province && isProvince(province) ? province : null,
     status: status && status in ORG_STATUS_LABEL ? (status as OrgStatus) : null,
     level: level && (ORG_LEVELS as readonly string[]).includes(level) ? level : null,
+    country: country && (COUNTRIES as readonly string[]).includes(country) ? country : null,
     page: Math.max(1, Number(s('page')) || 1),
   };
 }
 
 const filters = reactive(fromQuery());
 const pageSize = ref(20);
-const sort = ref<{ key: OrgListQuery['sort']; order: 'asc' | 'desc' } | null>(null);
+/** 默认按成交率从高到低 */
+const sort = ref<{ key: OrgListQuery['sort']; order: 'asc' | 'desc' } | null>({ key: 'dealRate', order: 'desc' });
 
 const rows = ref<OrgListItem[]>([]);
 const total = ref(0);
@@ -54,8 +59,15 @@ const showCreate = ref(false);
 const provinceOptions = PROVINCES.map((p) => ({ label: shortProvinceName(p), value: p }));
 const statusOptions = (Object.keys(ORG_STATUS_LABEL) as OrgStatus[]).map((k) => ({ label: ORG_STATUS_LABEL[k], value: k }));
 const levelOptions = ORG_LEVELS.map((l) => ({ label: `${l} 级`, value: l }));
+/** 热门留学目的地分组排在最前 */
+const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
+  type: 'group',
+  key: g.label,
+  label: g.label,
+  children: g.items.map((c) => ({ label: c, value: c })),
+}));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.status || filters.level));
+const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.status || filters.level || filters.country));
 const canCreate = computed(() => auth.can('org:create'));
 const canExport = computed(() => auth.can('org:export'));
 
@@ -66,6 +78,7 @@ function syncUrl() {
       province: filters.province ?? undefined,
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
+      country: filters.country ?? undefined,
       page: filters.page > 1 ? String(filters.page) : undefined,
     },
   });
@@ -83,6 +96,7 @@ async function load() {
       province: filters.province ?? undefined,
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
+      country: filters.country ?? undefined,
       sort: sort.value?.key,
       order: sort.value?.order,
     });
@@ -104,7 +118,7 @@ const debouncedKeyword = useDebounceFn(() => {
 
 watch(() => filters.keyword, debouncedKeyword);
 watch(
-  () => [filters.province, filters.status, filters.level],
+  () => [filters.province, filters.status, filters.level, filters.country],
   () => {
     filters.page = 1;
     syncUrl();
@@ -122,7 +136,8 @@ watch(
       next.keyword !== filters.keyword ||
       next.province !== filters.province ||
       next.status !== filters.status ||
-      next.level !== filters.level
+      next.level !== filters.level ||
+      next.country !== filters.country
     ) {
       Object.assign(filters, next);
     }
@@ -132,7 +147,7 @@ watch(
 load();
 
 function reset() {
-  Object.assign(filters, { keyword: '', province: null, status: null, level: null, page: 1 });
+  Object.assign(filters, { keyword: '', province: null, status: null, level: null, country: null, page: 1 });
 }
 
 function onPage(p: number) {
@@ -147,7 +162,11 @@ function onPageSize(s: number) {
   load();
 }
 function onSorter(s: DataTableSortState | null) {
-  sort.value = s && s.order ? { key: s.columnKey as OrgListQuery['sort'], order: s.order === 'ascend' ? 'asc' : 'desc' } : null;
+  // 取消排序时回到默认：成交率从高到低（与后端默认一致，表头箭头也保持一致）
+  sort.value =
+    s && s.order
+      ? { key: s.columnKey as OrgListQuery['sort'], order: s.order === 'ascend' ? 'asc' : 'desc' }
+      : { key: 'dealRate', order: 'desc' };
   load();
 }
 
@@ -162,6 +181,7 @@ async function handleExport() {
       province: filters.province ?? undefined,
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
+      country: filters.country ?? undefined,
     });
     // 使用 SheetJS 生成 xlsx（动态导入）
     const XLSX = await import('xlsx');
@@ -201,9 +221,32 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
   {
     title: '地区',
     key: 'region',
-    minWidth: 130,
-    render: (r) =>
-      h('span', { class: 'text-2' }, [r.province ? shortProvinceName(r.province) : '--', r.city && r.city !== shortProvinceName(r.province ?? '') ? ` · ${r.city}` : '']),
+    minWidth: 150,
+    render: (r) => {
+      // 只显示城市名：总部城市在前，其余办公城市依次列出
+      const cities = [...new Set([r.city, ...(r.officeCities ?? [])].filter((c): c is string => !!c))];
+      const text = cities.length ? cities.join('、') : r.province ? shortProvinceName(r.province) : '--';
+      // 城市多时换行，最多两行，其余悬停查看
+      return h('span', { class: 'text-2 region-cell', title: text }, text);
+    },
+  },
+  {
+    title: '主营国家',
+    key: 'countries',
+    minWidth: 200,
+    render: (r) => {
+      const list = r.countries ?? [];
+      if (!list.length) return h('span', { class: 'text-3' }, '--');
+      // 筛选了国家时把它排到最前，方便确认
+      const ordered = filters.country && list.includes(filters.country) ? [filters.country, ...list.filter((c) => c !== filters.country)] : list;
+      // 放不下时换到第二行：最多显示 5 个，其余用 +n 表示，悬停可看全部
+      const MAX = 5;
+      const shown = ordered.slice(0, MAX);
+      return h('div', { class: 'country-cell', title: list.join('、') }, [
+        ...shown.map((c) => h('span', { class: ['country-chip', { hit: c === filters.country }] }, c)),
+        list.length > MAX ? h('span', { class: 'country-more' }, `+${list.length - MAX}`) : null,
+      ]);
+    },
   },
   { title: '合作状态', key: 'status', minWidth: 100, align: 'center', render: (r) => h(StatusTag, { kind: 'org', status: r.status }) },
   {
@@ -223,6 +266,21 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
     sorter: true,
     sortOrder: sort.value?.key === 'defaultRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
     render: (r) => h('span', { class: 'num' }, `${r.defaultRate.toFixed(1)}%`),
+  },
+  {
+    title: '成交率',
+    key: 'dealRate',
+    minWidth: 110,
+    align: 'center',
+    sorter: true,
+    sortOrder: sort.value?.key === 'dealRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
+    render: (r) =>
+      r.dealRate === null
+        ? h('span', { class: 'text-3', title: '暂无报单' }, '--')
+        : h('div', { class: 'rate-cell', title: `已核实成交 ${r.dealCount} 笔 / 报单 ${r.reportCount} 笔` }, [
+            h('span', { class: ['num', 'rate-val', r.dealRate >= 60 ? 'good' : r.dealRate < 30 ? 'low' : ''] }, `${r.dealRate.toFixed(1)}%`),
+            h('span', { class: 'rate-sub num' }, `${r.dealCount}/${r.reportCount}`),
+          ]),
   },
   {
     title: '成交笔数',
@@ -265,6 +323,15 @@ const pagination = computed(() => ({
         v-model:value="filters.province"
         :options="provinceOptions"
         placeholder="所在省份"
+        clearable
+        filterable
+        class="sel"
+      />
+      <NSelect
+        id="org-filter-country"
+        v-model:value="filters.country"
+        :options="countryOptions"
+        placeholder="覆盖国家/地区"
         clearable
         filterable
         class="sel"
@@ -417,6 +484,60 @@ const pagination = computed(() => ({
 :deep(.level-C) {
   background: var(--neutral-soft);
   color: var(--text-2);
+}
+:deep(.region-cell) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.5;
+}
+:deep(.country-cell) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+:deep(.country-chip) {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--neutral-soft);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+:deep(.country-chip.hit) {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 500;
+}
+:deep(.country-more) {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+:deep(.rate-cell) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.3;
+}
+:deep(.rate-val) {
+  font-weight: 600;
+  color: var(--text);
+}
+:deep(.rate-val.good) {
+  color: var(--success);
+}
+:deep(.rate-val.low) {
+  color: var(--warning);
+}
+:deep(.rate-sub) {
+  font-size: 11px;
+  color: var(--text-3);
 }
 :deep(.complete) {
   display: flex;

@@ -6,15 +6,17 @@ import {
 } from 'naive-ui';
 import { Save } from 'lucide-vue-next';
 import {
-  BUSINESS_TYPES, COUNTRIES, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
+  BUSINESS_TYPES, COUNTRY_GROUPS, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
   shortProvinceName, type OrgDetail, type Province,
 } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
+import WechatQr from '@/components/WechatQr.vue';
 
 const props = withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean }>(), { canEdit: true });
-const emit = defineEmits<{ updated: [] }>();
+/** qrChanged：二维码是即时上传的，不随表单保存，由父组件在关闭抽屉后刷新 */
+const emit = defineEmits<{ updated: []; qrChanged: [] }>();
 const message = useMessage();
 const saving = ref(false);
 /** 机构账号不能改名称、等级、标签（内部字段） */
@@ -37,7 +39,11 @@ const form = reactive({
   level: null as string | null,
 });
 
+/** resetForm 期间不触发总部城市联动 */
+let resetting = false;
+
 function resetForm() {
+  resetting = true;
   form.name = props.org.name;
   form.advantage = props.org.advantage ?? '';
   form.intro = props.org.intro ?? '';
@@ -52,13 +58,19 @@ function resetForm() {
   form.officeCities = [...props.org.officeCities];
   form.tags = [...props.org.tags];
   form.level = props.org.level;
+  queueMicrotask(() => (resetting = false));
 }
 
 watch(() => props.org, resetForm, { immediate: true });
 
 const provinceOptions = PROVINCES.map((p) => ({ label: shortProvinceName(p), value: p }));
 const businessTypeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
-const countryOptions = COUNTRIES.map((c) => ({ label: c, value: c }));
+const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
+  type: 'group',
+  key: g.label,
+  label: g.label,
+  children: g.items.map((c) => ({ label: c, value: c })),
+}));
 const levelOptions = ORG_LEVELS.map((l) => ({ label: `${l} 级`, value: l }));
 
 /** 全部城市按省份分组 */
@@ -81,12 +93,17 @@ watch(() => form.province, (p) => {
   if (form.city && p && PROVINCE_OF_CITY[form.city] !== p) form.city = null;
 });
 
-// 选择总部城市：自动带出省份，并同步到办公城市
-watch(() => form.city, (c) => {
-  if (!c) return;
-  const p = PROVINCE_OF_CITY[c];
-  if (p && form.province !== p) form.province = p;
-  if (!form.officeCities.includes(c)) form.officeCities = [c, ...form.officeCities];
+// 选择总部城市：自动带出省份，并同步到办公城市（改选时替换掉之前的总部城市，而不是累加）
+watch(() => form.city, (c, old) => {
+  if (resetting) return;
+  let offices = form.officeCities;
+  if (old && old !== c) offices = offices.filter((x) => x !== old);
+  if (c) {
+    const p = PROVINCE_OF_CITY[c];
+    if (p && form.province !== p) form.province = p;
+    offices = [c, ...offices.filter((x) => x !== c)];
+  }
+  form.officeCities = offices;
 });
 
 const isDirty = computed(() => {
@@ -142,7 +159,7 @@ async function save() {
 
 <template>
   <div class="info-tab">
-    <NForm label-placement="left" label-width="90" :show-feedback="false" :disabled="!canEdit">
+    <NForm label-placement="left" label-width="120" :show-feedback="false" :disabled="!canEdit">
       <div class="form-grid">
         <NFormItem label="机构名称" required>
           <NInput v-model:value="form.name" placeholder="机构名称" maxlength="100" :disabled="isOrgUser || !canEdit" />
@@ -175,6 +192,9 @@ async function save() {
         <NFormItem label="公众号">
           <NInput v-model:value="form.wechat" placeholder="微信公众号名称" maxlength="100" />
         </NFormItem>
+        <NFormItem label="公众号二维码" class="full">
+          <WechatQr :org-id="org.id" :has="org.hasWechatQr" :can-edit="canEdit" :size="88" @changed="emit('qrChanged')" />
+        </NFormItem>
         <NFormItem label="业务类型" class="full">
           <NSelect
             v-model:value="form.businessTypes"
@@ -183,13 +203,13 @@ async function save() {
             placeholder="选择业务类型"
           />
         </NFormItem>
-        <NFormItem label="覆盖国家" class="full">
+        <NFormItem label="覆盖国家和地区" class="full">
           <NSelect
             v-model:value="form.countries"
             :options="countryOptions"
             multiple
             filterable
-            placeholder="选择覆盖国家"
+            placeholder="选择覆盖国家和地区（可搜索）"
           />
         </NFormItem>
         <NFormItem label="办公城市" class="full">
@@ -237,7 +257,7 @@ async function save() {
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 24px;
+  gap: 0 24px;
 }
 .form-grid :deep(.full) {
   grid-column: 1 / -1;

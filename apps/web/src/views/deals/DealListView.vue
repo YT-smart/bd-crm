@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref, watch, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   NDataTable, NInput, NSelect, NDatePicker, NModal,
   NForm, NFormItem, NInputNumber, NTag, useMessage, useDialog,
@@ -22,6 +22,7 @@ import StatusTag from '@/components/StatusTag.vue';
 import { date, money, num } from '@/utils/format';
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const dialog = useDialog();
 const auth = useAuthStore();
@@ -54,9 +55,17 @@ const filters = reactive({
   keyword: '',
   orgId: null as string | null,
   status: null as DealStatus | null,
-  dateRange: null as [number, number] | null,
+  dateRange: rangeFromQuery(),
   page: 1,
 });
+
+/** 仪表盘「今日 / 本周 / 本月成交」跳转过来时带 ?start=YYYY-MM-DD&end=YYYY-MM-DD */
+function rangeFromQuery(): [number, number] | null {
+  const { start, end } = route.query;
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  if (typeof start !== 'string' || typeof end !== 'string' || !re.test(start) || !re.test(end)) return null;
+  return [new Date(`${start}T00:00:00`).getTime(), new Date(`${end}T00:00:00`).getTime()];
+}
 const pageSize = ref(20);
 const sort = ref<{ key: DealListQuery['sort']; order: 'asc' | 'desc' } | null>(null);
 const rows = ref<DealListItem[]>([]);
@@ -95,6 +104,10 @@ async function reload() { await Promise.all([load(), loadSummary()]); }
 const debouncedKeyword = useDebounceFn(() => { filters.page = 1; load(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
 watch(() => [filters.orgId, filters.status, filters.dateRange], () => { filters.page = 1; load(); });
+// 仪表盘带过来的日期参数只用于首次进入；之后改动日期筛选就去掉，避免刷新又被带回来
+watch(() => filters.dateRange, () => {
+  if (route.query.start || route.query.end) router.replace({ query: { ...route.query, start: undefined, end: undefined } });
+});
 
 function resetFilters() {
   Object.assign(filters, { keyword: '', orgId: null, status: null, dateRange: null, page: 1 });

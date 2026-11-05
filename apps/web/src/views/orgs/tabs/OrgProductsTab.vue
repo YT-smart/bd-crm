@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
-import { NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NEmpty, useMessage, useDialog } from 'naive-ui';
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next';
+import { NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, useMessage, useDialog } from 'naive-ui';
+import { Plus } from 'lucide-vue-next';
+import OrgCard from '../OrgCard.vue';
 import { BUSINESS_TYPES, type OrgProductItem, type ProductInput } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
@@ -13,6 +14,12 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
+
+function priceText(p: OrgProductItem) {
+  if (p.priceMin == null && p.priceMax == null) return '--';
+  if (p.priceMin != null && p.priceMin === p.priceMax) return money(p.priceMin);
+  return `${p.priceMin != null ? money(p.priceMin) : '--'} ~ ${p.priceMax != null ? money(p.priceMax) : '--'}`;
+}
 const dialog = useDialog();
 
 const showForm = ref(false);
@@ -89,41 +96,41 @@ function handleDelete(p: OrgProductItem) {
 </script>
 
 <template>
-  <div>
-    <div class="tab-header">
-      <span class="text-2">共 {{ products.length }} 个产品</span>
-      <button v-if="canEdit" id="product-add" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加产品</button>
-    </div>
+  <OrgCard title="产品与报价">
+    <template v-if="canEdit" #extra>
+      <button id="product-add" class="btn-outline-sm" @click="openAdd"><Plus :size="13" /> 添加产品</button>
+    </template>
 
-    <NEmpty v-if="!products.length" description="暂无产品与报价" style="margin-top: 40px" />
+    <div v-if="!products.length" class="empty text-3">暂未添加产品与报价</div>
 
-    <div v-else class="product-grid">
-      <div v-for="p in products" :key="p.id" class="product-card">
-        <div class="product-top">
-          <div class="product-name">{{ p.name }}</div>
-          <span class="product-type">{{ p.type }}</span>
-        </div>
-        <div class="product-details">
-          <div class="detail-row">
-            <span class="text-3">报价区间</span>
-            <span class="num">
-              {{ p.priceMin != null || p.priceMax != null
-                ? `${p.priceMin != null ? money(p.priceMin) : '--'} ~ ${p.priceMax != null ? money(p.priceMax) : '--'}`
-                : '--' }}
-            </span>
-          </div>
-          <div class="detail-row">
-            <span class="text-3">佣金比例</span>
-            <span v-if="p.rate != null" class="num rate">{{ p.rate }}%</span>
-            <span v-else class="num">{{ defaultRate }}%<span class="text-3 rate-hint">（默认）</span></span>
-          </div>
-        </div>
-        <div v-if="p.note" class="product-note"><span class="text-3">备注：</span>{{ p.note }}</div>
-        <div v-if="canEdit" class="product-actions">
-          <button class="icon-btn" title="编辑" @click="openEdit(p)"><Pencil :size="14" /></button>
-          <button class="icon-btn danger" title="删除" @click="handleDelete(p)"><Trash2 :size="14" /></button>
-        </div>
-      </div>
+    <div v-else class="table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>产品名称</th>
+            <th>类型</th>
+            <th>报价</th>
+            <th>佣金</th>
+            <th>说明</th>
+            <th v-if="canEdit" class="op">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="p in products" :key="p.id">
+            <td class="strong">{{ p.name }}</td>
+            <td>{{ p.type }}</td>
+            <td class="num nowrap">{{ priceText(p) }}</td>
+            <td class="num nowrap">
+              <span :class="{ rate: p.rate != null }">{{ p.rate ?? defaultRate }}%</span>
+            </td>
+            <td class="note">{{ p.note || '-' }}</td>
+            <td v-if="canEdit" class="op">
+              <button class="link-op" @click="openEdit(p)">编辑</button>
+              <button class="link-op danger" @click="handleDelete(p)">删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <NModal v-model:show="showForm" preset="card" :title="editing ? '编辑产品' : '添加产品'" style="max-width: 520px">
@@ -166,88 +173,53 @@ function handleDelete(p: OrgProductItem) {
         </div>
       </template>
     </NModal>
-  </div>
+  </OrgCard>
 </template>
 
 <style scoped>
-.tab-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-.product-card {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  position: relative;
-}
-.product-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.product-name {
-  font-weight: 600;
-  font-size: 15px;
-}
-.product-type {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.product-details {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.detail-row {
-  display: flex;
-  justify-content: space-between;
+.empty {
   font-size: 13px;
+  padding: 18px 0;
+  text-align: center;
 }
-.product-note {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-2);
-  word-break: break-all;
+.table-wrap {
+  overflow-x: auto;
 }
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.tbl th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--text-3);
+  background: var(--bg-subtle, var(--neutral-soft));
+  padding: 12px 16px;
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: top;
+}
+.tbl tr:hover td { background: var(--bg-subtle, var(--neutral-soft)); }
+.strong { font-weight: 500; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+.note { color: var(--text-2); min-width: 140px; }
 .rate { color: var(--brand); font-weight: 600; }
-.rate-hint { font-size: 12px; }
-.product-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 2px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border);
-  opacity: 0.55;
-  transition: opacity 0.15s;
-}
-.product-card:hover .product-actions {
-  opacity: 1;
-}
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+.op { width: 100px; white-space: nowrap; text-align: right; }
+.link-op {
+  padding: 0;
+  margin-left: 12px;
   border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-2);
+  background: none;
+  color: var(--brand);
+  font-size: 13px;
   cursor: pointer;
 }
-.icon-btn:hover { background: var(--neutral-soft); }
-.icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+.link-op:hover { text-decoration: underline; }
+.link-op.danger { color: var(--danger); }
 </style>

@@ -37,7 +37,7 @@ const RULES: Rule[] = [
   { label: '官网', weight: 5, test: (o) => filled(o.website) },
   { label: '公众号', weight: 5, test: (o) => filled(o.wechat) },
   { label: '业务类型', weight: 10, test: (o) => (o.businessTypes?.length ?? 0) > 0 },
-  { label: '覆盖国家', weight: 10, test: (o) => (o.countries?.length ?? 0) > 0 },
+  { label: '覆盖国家和地区', weight: 10, test: (o) => (o.countries?.length ?? 0) > 0 },
   { label: '联系人', weight: 10, test: (o) => (o.contactCount ?? 0) > 0 },
   { label: '产品与报价', weight: 10, test: (o) => (o.productCount ?? 0) > 0 },
   { label: '收款账户', weight: 5, test: (o) => o.bankInfo != null },

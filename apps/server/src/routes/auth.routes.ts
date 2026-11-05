@@ -67,7 +67,7 @@ router.post('/login', async (req, res) => {
     throw e;
   }
   ipFails.delete(ip);
-  setTokenCookie(res, signToken({ sub: user.id, role: user.role, pv: pwdVersion(user.passwordHash) }));
+  setTokenCookie(res, signToken({ sub: user.id, role: user.role, pv: pwdVersion(user.passwordHash), sid: user.sessionId ?? undefined }));
   await writeAudit(req, {
     module: 'auth',
     action: 'login',
@@ -83,7 +83,14 @@ router.post('/logout', async (req, res) => {
   const token = req.cookies?.[config.cookieName] as string | undefined;
   const payload = token ? verifyToken(token) : null;
   if (payload) {
-    const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, name: true, username: true, role: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, name: true, username: true, role: true, sessionId: true },
+    });
+    // 主动退出时作废本会话（只作废自己的，不影响别处更新的登录）
+    if (user && payload.sid && user.sessionId === payload.sid) {
+      await prisma.user.updateMany({ where: { id: user.id, sessionId: payload.sid }, data: { sessionId: null } });
+    }
     if (user) {
       await writeAudit(req, {
         module: 'auth',
@@ -106,8 +113,11 @@ router.put('/password', requireAuth, async (req, res) => {
   const { oldPassword, newPassword } = passwordSchema.parse(req.body);
   const profile = await authService.changePassword(req.user!.id, oldPassword, newPassword);
   // 密码已变，旧令牌全部失效；给当前设备重发一个
-  const fresh = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { passwordHash: true } });
-  setTokenCookie(res, signToken({ sub: req.user!.id, role: req.user!.role, pv: pwdVersion(fresh!.passwordHash) }));
+  const fresh = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { passwordHash: true, sessionId: true } });
+  setTokenCookie(
+    res,
+    signToken({ sub: req.user!.id, role: req.user!.role, pv: pwdVersion(fresh!.passwordHash), sid: fresh!.sessionId ?? undefined }),
+  );
   await writeAudit(req, { module: 'auth', action: 'change_password', targetId: req.user!.id, targetName: req.user!.username });
   ok(res, profile, '密码已修改');
 });

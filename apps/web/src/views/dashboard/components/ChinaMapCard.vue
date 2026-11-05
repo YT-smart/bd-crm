@@ -9,10 +9,15 @@ import { ensureChinaMap, type EChartsOption } from '@/plugins/echarts';
 import { tooltipBase, useChartTheme } from '@/composables/useChartTheme';
 import { money, moneyShort, num } from '@/utils/format';
 
-const props = defineProps<{
-  provinces: ProvinceStat[];
-  loading?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    provinces: ProvinceStat[];
+    loading?: boolean;
+    /** 是否展示成交额、佣金等经营数据（仅管理员） */
+    finance?: boolean;
+  }>(),
+  { finance: true },
+);
 
 const router = useRouter();
 const theme = useChartTheme();
@@ -65,9 +70,9 @@ const option = computed<EChartsOption>(() => {
           title +
           row('合作机构', `${num(s.count)} 家`) +
           row('合作中', `${num(s.active)} 家`) +
-          row('累计成交', `${num(s.dealCount)} 笔`) +
-          row('累计成交额', money(s.amount)) +
-          row('累计佣金', money(s.commission)) +
+          (props.finance
+            ? row('累计成交', `${num(s.dealCount)} 笔`) + row('累计成交额', money(s.amount)) + row('累计佣金', money(s.commission))
+            : '') +
           cities +
           `<div style="margin-top:6px;color:${t.brand};font-size:12px">点击查看该省机构</div>`
         );
@@ -163,7 +168,7 @@ function onMapClick(params: unknown) {
             </button>
           </li>
         </ol>
-        <div v-if="!loading && topAmount" class="rank-foot">
+        <div v-if="!loading && finance && topAmount" class="rank-foot">
           成交额最高：<strong>{{ shortProvinceName(topAmount.name) }}</strong>
           <span class="num">{{ moneyShort(topAmount.amount) }}</span>
         </div>

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, computed } from 'vue';
 import {
   NForm, NFormItem, NInput, NInputNumber, NSelect,
-  NDatePicker, useMessage,
+  NDatePicker, NModal, useMessage,
 } from 'naive-ui';
-import { Save } from 'lucide-vue-next';
+import { Pencil } from 'lucide-vue-next';
+import { date } from '@/utils/format';
+import StatusTag from '@/components/StatusTag.vue';
+import OrgCard from '../OrgCard.vue';
 import {
   OrgStatus, SettleCycle,
   ORG_STATUS_LABEL, SETTLE_CYCLE_LABEL,
@@ -12,13 +15,23 @@ import {
 } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
-import { useAuthStore } from '@/stores/auth';
 
 const props = withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean }>(), { canEdit: true });
 const emit = defineEmits<{ updated: [] }>();
 const message = useMessage();
-const auth = useAuthStore();
 const saving = ref(false);
+const showForm = ref(false);
+
+function openEdit() {
+  resetForm();
+  showForm.value = true;
+}
+
+const contractText = computed(() => {
+  const a = props.org.contractStart ? date(props.org.contractStart) : '';
+  const b = props.org.contractEnd ? date(props.org.contractEnd) : '';
+  return a || b ? `${a || '--'} 至 ${b || '--'}` : '--';
+});
 
 const statusOptions = (Object.keys(ORG_STATUS_LABEL) as OrgStatus[]).map((k) => ({
   label: ORG_STATUS_LABEL[k],
@@ -69,6 +82,7 @@ async function save() {
         : null,
     });
     message.success('已保存');
+    showForm.value = false;
     emit('updated');
   } catch (e) {
     message.error(e instanceof ApiError ? e.message : '保存失败');
@@ -79,8 +93,24 @@ async function save() {
 </script>
 
 <template>
-  <div class="coop-tab">
-    <NForm label-placement="left" label-width="100" :show-feedback="false" :disabled="!canEdit">
+  <OrgCard title="合作信息">
+    <template v-if="canEdit" #extra>
+      <button class="btn-outline-sm" @click="openEdit"><Pencil :size="13" :stroke-width="1.75" /> 编辑</button>
+    </template>
+
+    <div class="kv-list">
+      <div class="kv-row"><span class="kv-label">合作状态</span><span class="kv-value"><StatusTag kind="org" :status="org.status" /></span></div>
+      <div class="kv-row"><span class="kv-label">默认佣金</span><span class="kv-value num">{{ org.defaultRate }}%</span></div>
+      <div class="kv-row"><span class="kv-label">结算周期</span><span class="kv-value">{{ org.settleCycle ? SETTLE_CYCLE_LABEL[org.settleCycle] : '--' }}</span></div>
+      <div class="kv-row"><span class="kv-label">合同期限</span><span class="kv-value num">{{ contractText }}</span></div>
+      <div class="kv-row"><span class="kv-label">开户银行</span><span class="kv-value">{{ org.bankInfo?.bankName || '--' }}</span></div>
+      <div class="kv-row"><span class="kv-label">户名</span><span class="kv-value">{{ org.bankInfo?.accountName || '--' }}</span></div>
+      <div class="kv-row"><span class="kv-label">账号</span><span class="kv-value num">{{ org.bankInfo?.accountNo || '--' }}</span></div>
+      <div v-if="org.bankInfo?.note" class="kv-row"><span class="kv-label">备注</span><span class="kv-value">{{ org.bankInfo.note }}</span></div>
+    </div>
+
+    <NModal v-model:show="showForm" preset="card" title="编辑合作信息" style="max-width: 720px">
+    <NForm label-placement="left" label-width="80" :show-feedback="false" :disabled="!canEdit">
       <h3 class="section-title">合作状态</h3>
       <div class="form-grid">
         <NFormItem label="合作状态">
@@ -96,7 +126,7 @@ async function save() {
         </NFormItem>
       </div>
 
-      <h3 class="section-title" style="margin-top: 24px">合同信息</h3>
+      <h3 class="section-title gap">合同信息</h3>
       <div class="form-grid">
         <NFormItem label="合同开始">
           <NDatePicker v-model:value="form.contractStart" type="date" clearable style="width: 100%" />
@@ -106,7 +136,7 @@ async function save() {
         </NFormItem>
       </div>
 
-      <h3 class="section-title" style="margin-top: 24px">收款账户</h3>
+      <h3 class="section-title gap">收款账户</h3>
       <div class="form-grid">
         <NFormItem label="开户银行">
           <NInput v-model:value="form.bankName" placeholder="开户银行" maxlength="100" />
@@ -122,36 +152,32 @@ async function save() {
         </NFormItem>
       </div>
     </NForm>
-
-    <div v-if="canEdit" class="actions">
-      <button class="btn" :disabled="saving" @click="save">
-        <Save :size="14" /> {{ saving ? '保存中...' : '保存' }}
-      </button>
-      <button class="btn btn-ghost" @click="resetForm">重置</button>
-    </div>
-  </div>
+      <template #action>
+        <div style="display: flex; gap: 8px; justify-content: flex-end">
+          <button class="btn btn-ghost" @click="showForm = false">取消</button>
+          <button class="btn" :disabled="saving" @click="save">{{ saving ? '保存中...' : '保存' }}</button>
+        </div>
+      </template>
+    </NModal>
+  </OrgCard>
 </template>
 
 <style scoped>
-.coop-tab {
-  max-width: 800px;
+.kv-label {
+  flex-basis: 72px;
 }
 .section-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  margin: 0 0 12px;
+  margin: 0 0 14px;
+}
+.section-title.gap {
+  margin-top: 6px;
 }
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 24px;
-}
-.actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  gap: 0 24px;
 }
 </style>

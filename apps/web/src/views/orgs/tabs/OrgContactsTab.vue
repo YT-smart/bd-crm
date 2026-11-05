@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
-import { NModal, NForm, NFormItem, NInput, NSwitch, NEmpty, useMessage, useDialog } from 'naive-ui';
-import { Plus, Pencil, Trash2, Star } from 'lucide-vue-next';
+import { NModal, NForm, NFormItem, NInput, NSwitch, useMessage, useDialog } from 'naive-ui';
+import { ExternalLink, Plus, Pencil, Trash2 } from 'lucide-vue-next';
+import CopyText from '@/components/CopyText.vue';
+import WechatQr from '@/components/WechatQr.vue';
+import OrgCard from '../OrgCard.vue';
 import type { OrgContactItem, ContactInput } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 
-const props = withDefaults(defineProps<{ orgId: string; contacts: OrgContactItem[]; canEdit?: boolean }>(), { canEdit: true });
+const props = withDefaults(
+  defineProps<{
+    orgId: string;
+    contacts: OrgContactItem[];
+    canEdit?: boolean;
+    website?: string | null;
+    wechat?: string | null;
+    address?: string | null;
+    hasWechatQr?: boolean;
+  }>(),
+  { canEdit: true, website: null, wechat: null, address: null, hasWechatQr: false },
+);
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
 const dialog = useDialog();
@@ -89,33 +103,47 @@ function handleDelete(c: OrgContactItem) {
 </script>
 
 <template>
-  <div>
-    <div class="tab-header">
-      <span class="text-2">共 {{ contacts.length }} 个联系人</span>
-      <button v-if="canEdit" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加联系人</button>
-    </div>
+  <OrgCard title="联系方式">
+    <template v-if="canEdit" #extra>
+      <button class="btn-outline-sm" @click="openAdd"><Plus :size="13" /> 添加联系人</button>
+    </template>
 
-    <NEmpty v-if="!contacts.length" description="暂无联系人" style="margin-top: 40px" />
+    <div v-if="!contacts.length" class="empty text-3">暂无联系人</div>
 
-    <div v-else class="contact-list">
-      <div v-for="c in contacts" :key="c.id" class="contact-card">
-        <div class="contact-main">
-          <div class="contact-name">
-            <Star v-if="c.isPrimary" :size="14" fill="var(--brand)" color="var(--brand)" />
-            {{ c.name }}
-            <span v-if="c.title" class="text-3">{{ c.title }}</span>
-          </div>
-          <div class="contact-detail text-2">
-            <span v-if="c.phone">{{ c.phone }}</span>
-            <span v-if="c.wechat">微信: {{ c.wechat }}</span>
-            <span v-if="c.email">{{ c.email }}</span>
-          </div>
-        </div>
-        <div v-if="canEdit" class="contact-actions">
+    <div v-for="c in contacts" :key="c.id" class="contact">
+      <div class="contact-head">
+        <span class="contact-name"><CopyText :value="c.name" label="姓名" /></span>
+        <span v-if="c.title" class="text-3 contact-title">{{ c.title }}</span>
+        <span v-if="c.isPrimary" class="primary">主要对接人</span>
+        <span class="spacer" />
+        <template v-if="canEdit">
           <button class="icon-btn" title="编辑" @click="openEdit(c)"><Pencil :size="14" /></button>
           <button class="icon-btn danger" title="删除" @click="handleDelete(c)"><Trash2 :size="14" /></button>
-        </div>
+        </template>
       </div>
+      <div class="kv-list">
+        <div class="kv-row"><span class="kv-label">电话</span><span class="kv-value num"><CopyText :value="c.phone" label="电话" /></span></div>
+        <div class="kv-row"><span class="kv-label">微信</span><span class="kv-value"><CopyText :value="c.wechat" label="微信号" /></span></div>
+        <div v-if="c.email" class="kv-row"><span class="kv-label">邮箱</span><span class="kv-value"><CopyText :value="c.email" label="邮箱" /></span></div>
+      </div>
+    </div>
+
+    <div class="kv-list org-rows">
+      <div class="kv-row">
+        <span class="kv-label">官网</span>
+        <span class="kv-value">
+          <CopyText :value="website" label="官网地址" />
+          <a v-if="website" class="open-link" :href="website" target="_blank" rel="noopener noreferrer" title="打开官网"><ExternalLink :size="13" /></a>
+        </span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-label">公众号</span>
+        <span class="kv-value wechat-cell">
+          <CopyText :value="wechat" label="公众号名称" />
+          <WechatQr v-if="wechat || hasWechatQr || canEdit" :org-id="orgId" :has="hasWechatQr" :can-edit="canEdit" @changed="emit('refresh')" />
+        </span>
+      </div>
+      <div class="kv-row"><span class="kv-label">地址</span><span class="kv-value"><CopyText :value="address" label="地址" /></span></div>
     </div>
 
     <NModal v-model:show="showForm" preset="card" :title="editing ? '编辑联系人' : '添加联系人'" style="max-width: 480px">
@@ -146,66 +174,78 @@ function handleDelete(c: OrgContactItem) {
         </div>
       </template>
     </NModal>
-  </div>
+  </OrgCard>
 </template>
 
 <style scoped>
-.tab-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+.open-link {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 6px;
+  color: var(--text-3);
 }
-.contact-list {
+.open-link:hover {
+  color: var(--brand);
+}
+.wechat-cell {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 }
-.contact-card {
+.empty {
+  font-size: 13px;
+  padding: 4px 0 10px;
+}
+.contact {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.contact-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  gap: 8px;
+  padding-top: 4px;
 }
 .contact-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+.contact-title {
+  font-size: 12px;
+}
+.primary {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--brand-soft);
+  color: var(--brand);
   font-weight: 500;
 }
-.contact-detail {
-  display: flex;
-  gap: 16px;
-  margin-top: 4px;
-  font-size: 13px;
+.spacer { flex: 1; }
+.contact .kv-label,
+.org-rows .kv-label {
+  flex-basis: 72px;
 }
-.contact-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0.5;
+.link {
+  color: var(--brand);
+  text-decoration: none;
 }
-.contact-card:hover .contact-actions {
-  opacity: 1;
-}
+.link:hover { text-decoration: underline; }
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-3);
   cursor: pointer;
 }
-.icon-btn:hover {
-  background: var(--neutral-soft);
-}
-.icon-btn.danger:hover {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
+.icon-btn:hover { background: var(--neutral-soft); color: var(--text); }
+.icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 </style>

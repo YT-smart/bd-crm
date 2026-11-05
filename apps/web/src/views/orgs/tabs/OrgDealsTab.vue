@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, reactive, h, onMounted } from 'vue';
 import { NDataTable, NSelect, type DataTableColumns } from 'naive-ui';
-import { DealStatus, DEAL_STATUS_LABEL, type DealListItem, type OrgStats } from '@bdcrm/shared';
+import { DealStatus, DEAL_STATUS_LABEL, type DealListItem } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useMessage } from 'naive-ui';
 import StatusTag from '@/components/StatusTag.vue';
+import OrgCard from '../OrgCard.vue';
 import { date, money } from '@/utils/format';
 
-const props = defineProps<{ orgId: string; stats: OrgStats }>();
+const props = defineProps<{ orgId: string }>();
 const message = useMessage();
 
 const rows = ref<DealListItem[]>([]);
@@ -67,36 +68,8 @@ const columns: DataTableColumns<DealListItem> = [
 </script>
 
 <template>
-  <div>
-    <div class="stats-row">
-      <div class="mini-stat">
-        <div class="mini-label text-3">总成交</div>
-        <div class="mini-value">{{ stats.dealCount }} <span class="text-3 unit">笔</span></div>
-      </div>
-      <div class="mini-stat">
-        <div class="mini-label text-3">成交总额</div>
-        <div class="mini-value">{{ money(stats.dealAmount) }}</div>
-      </div>
-      <div class="mini-stat">
-        <div class="mini-label text-3">累计佣金</div>
-        <div class="mini-value brand">{{ money(stats.commission) }}</div>
-      </div>
-      <div class="mini-stat">
-        <div class="mini-label text-3">已结算</div>
-        <div class="mini-value success">{{ money(stats.settled) }}</div>
-      </div>
-      <div class="mini-stat">
-        <div class="mini-label text-3">未结算</div>
-        <div class="mini-value warning">{{ money(stats.unsettled) }}</div>
-      </div>
-      <div class="mini-stat">
-        <div class="mini-label text-3">待审核</div>
-        <div class="mini-value">{{ stats.pendingAudit }} <span class="text-3 unit">笔</span></div>
-      </div>
-    </div>
-
-    <div class="list-header">
-      <span class="section-title">成交明细</span>
+  <OrgCard title="成交记录">
+    <template #extra>
       <NSelect
         id="org-deals-status"
         v-model:value="status"
@@ -104,10 +77,10 @@ const columns: DataTableColumns<DealListItem> = [
         clearable
         placeholder="全部状态"
         size="small"
-        style="width: 140px"
+        style="width: 130px"
         @update:value="onStatusChange"
       />
-    </div>
+    </template>
 
     <NDataTable
       remote
@@ -119,45 +92,9 @@ const columns: DataTableColumns<DealListItem> = [
       :scroll-x="820"
       size="small"
     />
-  </div>
+  </OrgCard>
 </template>
 
 <style scoped>
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.mini-stat {
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.mini-label {
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.mini-value {
-  font-size: 18px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-.mini-value .unit { font-size: 12px; font-weight: 400; }
-.mini-value.brand { color: var(--brand); }
-.mini-value.success { color: var(--success); }
-.mini-value.warning { color: var(--warning); }
-.list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
 :deep(.strong) { font-weight: 600; }
 </style>

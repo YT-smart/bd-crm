@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NButton, NForm, NFormItem, NInput, type FormInst, type FormRules } from 'naive-ui';
-import { BarChart3, Building2, Eye, EyeOff, LockKeyhole, ShieldCheck, User } from 'lucide-vue-next';
+import { BarChart3, Building2, Eye, EyeOff, LockKeyhole, MonitorSmartphone, ShieldCheck, User } from 'lucide-vue-next';
 import LogoMark from '@/components/LogoMark.vue';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -99,6 +99,11 @@ function fillDemo(username: string, password: string) {
         <h1 class="panel-title">登录账号</h1>
         <p class="panel-sub">使用管理员分配的账号登录</p>
 
+        <div v-if="auth.notice" id="login-notice" class="login-notice" role="alert">
+          <MonitorSmartphone :size="16" :stroke-width="1.75" class="notice-ic" />
+          <span>{{ auth.notice }}</span>
+        </div>
+
         <NForm ref="formRef" :model="form" :rules="rules" :show-require-mark="false" size="large" @submit.prevent="submit">
           <NFormItem label="账号" path="username">
             <NInput
@@ -154,6 +159,24 @@ function fillDemo(username: string, password: string) {
 </template>
 
 <style scoped>
+.login-notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.notice-ic {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
 .login {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(420px, 1fr);

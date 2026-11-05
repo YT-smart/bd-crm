@@ -41,6 +41,7 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
   if (q.province) where.province = q.province;
   if (q.status) where.status = q.status;
   if (q.level) where.level = q.level;
+  if (q.country) where.countries = { has: q.country };
   return where;
 }
 
@@ -50,6 +51,8 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
 export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize'>> & OrgListQuery): Promise<PageResult<OrgListItem>> {
   const where = buildOrgWhere(q);
 
+  // 默认按成交率从高到低
+  const sort = q.sort ?? 'dealRate';
   const order = q.order ?? 'desc';
   const skip = (q.page - 1) * q.pageSize;
   const include = { owner: { select: { name: true } } } as const;
@@ -57,21 +60,29 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
   let total: number;
   let rows: Prisma.OrgGetPayload<{ include: typeof include }>[];
 
-  if (q.sort === 'dealCount') {
-    // 成交笔数为已审核成交的聚合值：先取全部匹配机构的计数，内存排序后再分页
+  if (sort === 'dealCount' || sort === 'dealRate') {
+    // 成交笔数 / 成交率为成交记录的聚合值：先取全部匹配机构的统计，内存排序后再分页
     const all = await prisma.org.findMany({ where, select: { id: true, createdAt: true } });
     total = all.length;
-    const counts = all.length
-      ? await prisma.deal.groupBy({
-          by: ['orgId'],
-          where: { orgId: { in: all.map((o) => o.id) }, status: { in: [...APPROVED_DEAL_STATUSES] } },
-          _count: { _all: true },
-        })
-      : [];
-    const cm = new Map(counts.map((c) => [c.orgId, c._count._all]));
+    const sm = await dealCountsOf(all.map((o) => o.id));
+    const value = (id: string) => {
+      const s = sm.get(id);
+      if (sort === 'dealCount') return s?.approved ?? 0;
+      return s?.reports ? s.approved / s.reports : null;
+    };
     const dir = order === 'asc' ? 1 : -1;
     const pageIds = all
-      .sort((a, b) => dir * ((cm.get(a.id) ?? 0) - (cm.get(b.id) ?? 0)) || b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => {
+        const va = value(a.id);
+        const vb = value(b.id);
+        // 没有报单的机构（成交率为空）始终排在最后
+        if (va === null || vb === null) {
+          if (va !== vb) return va === null ? 1 : -1;
+        } else if (va !== vb) {
+          return dir * (va - vb);
+        }
+        return (sm.get(b.id)?.approved ?? 0) - (sm.get(a.id)?.approved ?? 0) || b.createdAt.getTime() - a.createdAt.getTime();
+      })
       .slice(skip, skip + q.pageSize)
       .map((o) => o.id);
     const found = await prisma.org.findMany({ where: { id: { in: pageIds } }, include });
@@ -79,9 +90,9 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
     rows = pageIds.map((id) => fm.get(id)).filter((o): o is NonNullable<typeof o> => !!o);
   } else {
     const orderBy: Prisma.OrgOrderByWithRelationInput[] =
-      q.sort === 'level'
+      sort === 'level'
         ? [{ level: { sort: order, nulls: 'last' } }, { createdAt: 'desc' }]
-        : [{ [q.sort ?? 'createdAt']: order }];
+        : [{ [sort]: order }];
     [total, rows] = await Promise.all([
       prisma.org.count({ where }),
       prisma.org.findMany({ where, orderBy, skip, take: q.pageSize, include }),
@@ -89,15 +100,17 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
   }
 
   const ids = rows.map((r) => r.id);
-  const stats = ids.length
-    ? await prisma.deal.groupBy({
-        by: ['orgId'],
-        where: { orgId: { in: ids }, status: { in: [...APPROVED_DEAL_STATUSES] } },
-        _count: { _all: true },
-        _sum: { amount: true, commission: true },
-        _max: { dealAt: true },
-      })
-    : [];
+  const [stats, counts] = await Promise.all([
+    ids.length
+      ? prisma.deal.groupBy({
+          by: ['orgId'],
+          where: { orgId: { in: ids }, status: { in: [...APPROVED_DEAL_STATUSES] } },
+          _sum: { amount: true, commission: true },
+          _max: { dealAt: true },
+        })
+      : [],
+    dealCountsOf(ids),
+  ]);
   const sm = new Map(stats.map((s) => [s.orgId, s]));
 
   return {
@@ -106,11 +119,14 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
     pageSize: q.pageSize,
     list: rows.map((o) => {
       const s = sm.get(o.id);
+      const c = counts.get(o.id);
       return {
         id: o.id,
         name: o.name,
         province: o.province,
         city: o.city,
+        officeCities: o.officeCities,
+        countries: o.countries,
         status: o.status,
         level: o.level,
         defaultRate: num(o.defaultRate),
@@ -118,7 +134,9 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
         tags: o.tags,
         completeness: o.completeness,
         ownerName: o.owner?.name ?? null,
-        dealCount: s?._count._all ?? 0,
+        dealCount: c?.approved ?? 0,
+        reportCount: c?.reports ?? 0,
+        dealRate: c?.reports ? Math.round((c.approved / c.reports) * 1000) / 10 : null,
         dealAmount: num(s?._sum.amount),
         commission: num(s?._sum.commission),
         lastDealAt: s?._max.dealAt?.toISOString() ?? null,
@@ -126,6 +144,24 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
       };
     }),
   };
+}
+
+/** 各机构的报单总数与已核实成交数（成交率 = approved / reports） */
+async function dealCountsOf(orgIds: string[]) {
+  const m = new Map<string, { reports: number; approved: number }>();
+  if (!orgIds.length) return m;
+  const groups = await prisma.deal.groupBy({
+    by: ['orgId', 'status'],
+    where: { orgId: { in: orgIds } },
+    _count: { _all: true },
+  });
+  for (const g of groups) {
+    const cur = m.get(g.orgId) ?? { reports: 0, approved: 0 };
+    cur.reports += g._count._all;
+    if (APPROVED_DEAL_STATUSES.includes(g.status)) cur.approved += g._count._all;
+    m.set(g.orgId, cur);
+  }
+  return m;
 }
 
 /* ---------- 机构详情 ---------- */
@@ -212,6 +248,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     address: org.address,
     website: org.website,
     wechat: org.wechat,
+    hasWechatQr: !!org.wechatQr,
     foundedAt: isoOrNull(org.foundedAt),
     scale: org.scale,
     businessTypes: org.businessTypes,
@@ -485,6 +522,20 @@ export async function deleteAttachment(attachmentId: string) {
   if (!a) throw new AppError(404, '附件不存在');
   await prisma.attachment.delete({ where: { id: attachmentId } });
   await removeStoredFile(a.url);
+}
+
+/* ---------- 公众号二维码 ---------- */
+
+export async function setWechatQr(orgId: string, key: string | null) {
+  const org = await ensureOrg(orgId);
+  await prisma.org.update({ where: { id: orgId }, data: { wechatQr: key } });
+  if (org.wechatQr && org.wechatQr !== key) await removeStoredFile(org.wechatQr);
+}
+
+export async function getWechatQrKey(orgId: string) {
+  const org = await ensureOrg(orgId);
+  if (!org.wechatQr) throw new AppError(404, '尚未上传公众号二维码');
+  return org.wechatQr;
 }
 
 /* ---------- 员工列表（下拉选择） ---------- */

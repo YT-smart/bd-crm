@@ -154,6 +154,10 @@ export interface OrgListItem {
   name: string;
   province: string | null;
   city: string | null;
+  /** 办公城市（含总部城市） */
+  officeCities: string[];
+  /** 覆盖国家和地区 */
+  countries: string[];
   status: OrgStatus;
   level: string | null;
   defaultRate: number;
@@ -162,6 +166,10 @@ export interface OrgListItem {
   completeness: number;
   ownerName: string | null;
   dealCount: number;
+  /** 报单总数（含待审核、已驳回） */
+  reportCount: number;
+  /** 成交率 = 已核实成交 / 报单总数（%），没有报单时为 null */
+  dealRate: number | null;
   dealAmount: number;
   commission: number;
   lastDealAt: string | null;
@@ -175,7 +183,9 @@ export interface OrgListQuery {
   province?: string;
   status?: OrgStatus;
   level?: string;
-  sort?: 'createdAt' | 'defaultRate' | 'name' | 'level' | 'dealCount';
+  /** 覆盖国家和地区 */
+  country?: string;
+  sort?: 'createdAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate';
   order?: 'asc' | 'desc';
 }
 
@@ -234,6 +244,8 @@ export interface OrgDetail {
   address: string | null;
   website: string | null;
   wechat: string | null;
+  /** 是否已上传公众号二维码（图片经 /orgs/:id/wechat-qr 获取） */
+  hasWechatQr: boolean;
   foundedAt: string | null;
   scale: string | null;
   businessTypes: string[];
@@ -451,6 +463,32 @@ export interface DealSummary {
   rejected: number;
   pendingPaymentAmount: number;
   settledAmount: number;
+}
+
+/** 某个时间段的成交统计（按成交日期） */
+export interface DealPeriodStat {
+  /** 已核实成交（待到账 + 已结算） */
+  count: number;
+  amount: number;
+  commission: number;
+  /** 报单总数（含待审核、已驳回） */
+  reports: number;
+  /** 成交率 = count / reports（%），无报单为 null */
+  rate: number | null;
+}
+
+/** 成交概览（管理员）：今日 / 本周 / 本月对比上期同期，及近 30 天走势 */
+export interface DealOverview {
+  today: DealPeriodStat;
+  yesterday: DealPeriodStat;
+  week: DealPeriodStat;
+  lastWeek: DealPeriodStat;
+  month: DealPeriodStat;
+  lastMonth: DealPeriodStat;
+  all: DealPeriodStat;
+  /** 各区间起点（YYYY-MM-DD，北京时间），用于点击筛选 */
+  ranges: { today: string; weekStart: string; monthStart: string };
+  daily: ({ date: string } & DealPeriodStat)[];
 }
 
 /** 机构成交选项（用于成交录入时选择机构与产品） */

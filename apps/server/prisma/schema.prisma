@@ -59,6 +59,7 @@ model User {
   failedAttempts Int       @default(0)
   lockedUntil    DateTime?
   lastLoginAt    DateTime?
+  sessionId      String? // 当前有效登录（仅管理员 / 员工单处登录时使用）
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -102,7 +103,8 @@ model Org {
   city          String?
   address       String?
   website       String?
-  wechat        String?
+  wechat        String? // 公众号名称
+  wechatQr      String? // 公众号二维码图片（存储 key）
   foundedAt     DateTime?
   scale         String?
   businessTypes String[] // 留学申请 / 语言培训 / 背景提升 ...

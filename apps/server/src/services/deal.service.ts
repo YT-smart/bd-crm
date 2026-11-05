@@ -1,6 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import {
+  APPROVED_DEAL_STATUSES,
   DealStatus,
+  type DealOverview,
+  type DealPeriodStat,
   type DealListItem,
   type DealListQuery,
   type DealSummary,
@@ -12,6 +15,7 @@ import { AppError } from '../lib/http';
 import { dayRange } from '../lib/date';
 
 const num = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
+const APPROVED: readonly DealStatus[] = APPROVED_DEAL_STATUSES;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** 列表 / 导出共用的筛选条件。scopeOrgId 优先级最高，机构账号传入的 orgId 不能覆盖它。 */
@@ -135,6 +139,98 @@ export async function getDealSummary(scopeOrgId?: string): Promise<DealSummary> 
   }
 
   return result;
+}
+
+/* ============ 成交概览（管理员） ============ */
+
+const DAY_MS = 24 * 3600 * 1000;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function emptyStat(): DealPeriodStat {
+  return { count: 0, amount: 0, commission: 0, reports: 0, rate: null };
+}
+function finish(s: DealPeriodStat): DealPeriodStat {
+  s.amount = Math.round(s.amount * 100) / 100;
+  s.commission = Math.round(s.commission * 100) / 100;
+  s.rate = s.reports ? Math.round((s.count / s.reports) * 1000) / 10 : null;
+  return s;
+}
+
+/**
+ * 今日 / 本周 / 本月成交，对比上期同一时刻（如本周一至今 vs 上周一至上周同一时刻）。
+ * 按成交日期统计；进程时区为北京时间，Date 本地方法即北京时间。
+ */
+export async function getDealOverview(now = new Date()): Promise<DealOverview> {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const elapsedToday = now.getTime() - today.getTime();
+  const weekStart = new Date(today.getTime() - ((today.getDay() + 6) % 7) * DAY_MS); // 周一
+  const lastWeekStart = new Date(weekStart.getTime() - 7 * DAY_MS);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const dailyStart = new Date(today.getTime() - 29 * DAY_MS);
+  const from = new Date(Math.min(lastMonthStart.getTime(), lastWeekStart.getTime(), dailyStart.getTime()));
+
+  const [rows, allGroups] = await Promise.all([
+    prisma.deal.findMany({
+      where: { dealAt: { gte: from, lte: now } },
+      select: { dealAt: true, status: true, amount: true, commission: true },
+    }),
+    prisma.deal.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true, commission: true } }),
+  ]);
+
+  const inRange = (t: number, start: Date, end: number) => t >= start.getTime() && t < end;
+  const periods = {
+    today: [today, now.getTime() + 1],
+    yesterday: [new Date(today.getTime() - DAY_MS), today.getTime() - DAY_MS + elapsedToday + 1],
+    week: [weekStart, now.getTime() + 1],
+    lastWeek: [lastWeekStart, lastWeekStart.getTime() + (now.getTime() - weekStart.getTime()) + 1],
+    month: [monthStart, now.getTime() + 1],
+    // 上月同期：上月 1 日至上月同一天同一时刻（不超过上月末）
+    lastMonth: [lastMonthStart, Math.min(lastMonthStart.getTime() + (now.getTime() - monthStart.getTime()) + 1, monthStart.getTime())],
+  } as const;
+  const stats = Object.fromEntries(Object.keys(periods).map((k) => [k, emptyStat()])) as Record<keyof typeof periods, DealPeriodStat>;
+  const daily = new Map<string, DealPeriodStat>();
+  for (let i = 0; i < 30; i++) daily.set(ymd(new Date(dailyStart.getTime() + i * DAY_MS)), emptyStat());
+
+  for (const r of rows) {
+    const t = r.dealAt.getTime();
+    const approved = APPROVED.includes(r.status);
+    const add = (s: DealPeriodStat) => {
+      s.reports++;
+      if (approved) {
+        s.count++;
+        s.amount += num(r.amount);
+        s.commission += num(r.commission);
+      }
+    };
+    for (const [k, [start, end]] of Object.entries(periods) as [keyof typeof periods, readonly [Date, number]][]) {
+      if (inRange(t, start, end)) add(stats[k]);
+    }
+    const d = daily.get(ymd(r.dealAt));
+    if (d) add(d);
+  }
+
+  const all = emptyStat();
+  for (const g of allGroups) {
+    all.reports += g._count._all;
+    if (APPROVED.includes(g.status)) {
+      all.count += g._count._all;
+      all.amount += num(g._sum.amount);
+      all.commission += num(g._sum.commission);
+    }
+  }
+
+  return {
+    today: finish(stats.today),
+    yesterday: finish(stats.yesterday),
+    week: finish(stats.week),
+    lastWeek: finish(stats.lastWeek),
+    month: finish(stats.month),
+    lastMonth: finish(stats.lastMonth),
+    all: finish(all),
+    ranges: { today: ymd(today), weekStart: ymd(weekStart), monthStart: ymd(monthStart) },
+    daily: [...daily.entries()].map(([date, s]) => ({ date, ...finish(s) })),
+  };
 }
 
 /* ============ 录入成交 ============ */

@@ -10,6 +10,7 @@ import type {
   DealListQuery,
   DealSettleInput,
   DealSummary,
+  DealOverview,
   DealUpdateInput,
   FollowUpInput,
   ImportResult,
@@ -90,10 +91,36 @@ export const orgApi = {
   attachmentUrl: (orgId: string, attId: string, inline = false) =>
     `/api/orgs/${orgId}/attachments/${attId}/download${inline ? '?inline=1' : ''}`,
   deleteAttachment: (orgId: string, attId: string) => http.del<null>(`/orgs/${orgId}/attachments/${attId}`),
+  /** 生成免登录分享链接，days = 0 表示永久有效 */
+  shareAttachment: (orgId: string, attId: string, days: 0 | 1 | 7 | 30) =>
+    http.post<{ token: string; expiresAt: string | null }>(`/orgs/${orgId}/attachments/${attId}/share`, { days }),
+  /** 公众号二维码图片地址（v 用于上传后刷新缓存） */
+  wechatQrUrl: (orgId: string, v?: string | number) => `/api/orgs/${orgId}/wechat-qr${v ? `?v=${v}` : ''}`,
+  uploadWechatQr: (orgId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return http.upload<null>(`/orgs/${orgId}/wechat-qr`, form);
+  },
+  deleteWechatQr: (orgId: string) => http.del<null>(`/orgs/${orgId}/wechat-qr`),
+};
+
+export interface SharedFileMeta {
+  name: string;
+  size: number;
+  orgName: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/** 附件分享（免登录） */
+export const shareApi = {
+  meta: (token: string) => http.get<SharedFileMeta>(`/share/${encodeURIComponent(token)}`, undefined, { silent: true }),
+  fileUrl: (token: string, inline = false) => `/api/share/${encodeURIComponent(token)}/file${inline ? '?inline=1' : ''}`,
 };
 
 export const dealApi = {
   summary: () => http.get<DealSummary>('/deals/summary'),
+  overview: () => http.get<DealOverview>('/deals/overview'),
   list: (q: DealListQuery) => http.get<PageResult<DealListItem>>('/deals', { ...q }),
   orgOptions: () => http.get<OrgOption[]>('/deals/org-options'),
   exportData: (q: DealListQuery) => http.get<Record<string, unknown>[]>('/deals/export', { ...q }),

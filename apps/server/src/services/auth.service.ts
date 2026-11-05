@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { User, Org } from '@prisma/client';
-import { permsOf, type LoginLogItem, type UserProfile } from '@bdcrm/shared';
+import { SINGLE_SESSION_ROLES, permsOf, type LoginLogItem, type UserProfile } from '@bdcrm/shared';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { Errors } from '../lib/http';
@@ -83,7 +84,13 @@ export async function login(username: string, password: string, ctx: LoginCtx) {
 
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+    data: {
+      failedAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date(),
+      // 管理员 / 员工：生成新会话，之前在其他设备上的登录随即失效
+      ...(SINGLE_SESSION_ROLES.includes(user.role) ? { sessionId: randomUUID() } : {}),
+    },
     include: { org: { select: { name: true } } },
   });
   await logLogin(username, user.id, true, null, ctx);

@@ -244,7 +244,7 @@ async function submit() {
 
 <style scoped>
 .form :deep(.n-form-item) {
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 .row {
   display: flex;

@@ -8,6 +8,7 @@ import { DAY_RE, fmtDay } from '../lib/date';
 import {
   listDeals,
   getDealSummary,
+  getDealOverview,
   createDeal,
   updateDeal,
   auditDeal,
@@ -25,6 +26,11 @@ const router = Router();
 router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
   const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
   ok(res, await getDealSummary(scopeOrgId));
+});
+
+/* 成交概览：成交额、佣金、成交率等经营数据，仅管理员 */
+router.get('/overview', requirePerm(PERM.DASHBOARD_FINANCE), async (_req, res) => {
+  ok(res, await getDealOverview());
 });
 
 /* ============ 机构选项（录入下拉） ============ */

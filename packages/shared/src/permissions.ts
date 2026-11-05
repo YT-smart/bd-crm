@@ -7,6 +7,8 @@ import { Role } from './enums';
 export const PERM = {
   DASHBOARD_GLOBAL: 'dashboard:global',
   DASHBOARD_ORG: 'dashboard:org',
+  /** 仪表盘中的成交笔数、成交额、佣金等经营数据（仅管理员） */
+  DASHBOARD_FINANCE: 'dashboard:finance',
 
   ORG_VIEW: 'org:view',
   ORG_CREATE: 'org:create',

@@ -491,3 +491,74 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- 弹窗 / 抽屉内表单：统一字段上下间距，避免拥挤 ---------- */
+.n-modal .n-form .n-form-item,
+.n-drawer .n-form .n-form-item {
+  margin-bottom: 18px;
+}
+.n-modal .n-form > .n-form-item:last-child,
+.n-drawer .n-form > .n-form-item:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- 标签-值 行（机构详情卡片） ---------- */
+.kv-list {
+  display: flex;
+  flex-direction: column;
+}
+.kv-row {
+  display: flex;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.kv-row:last-child {
+  border-bottom: 0;
+}
+.kv-label {
+  flex: 0 0 96px;
+  color: var(--text-3);
+}
+.kv-value {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  word-break: break-all;
+}
+.kv-value.pre {
+  white-space: pre-wrap;
+}
+.kv-chip {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 10px;
+  margin: 1px 6px 3px 0;
+  border-radius: 99px;
+  background: var(--neutral-soft);
+  color: var(--text-2);
+}
+.kv-chip.brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.btn-outline-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--brand);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.btn-outline-sm:hover {
+  background: var(--brand-soft);
+}

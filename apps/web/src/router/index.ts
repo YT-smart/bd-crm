@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '登录', public: true },
   },
   {
+    path: '/s/:token',
+    name: 'share',
+    component: () => import('@/views/share/ShareView.vue'),
+    meta: { title: '文件分享', public: true },
+  },
+  {
     path: '/force-password',
     name: 'force-password',
     component: () => import('@/views/auth/ForcePasswordView.vue'),

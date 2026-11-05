@@ -14,6 +14,10 @@ import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { date } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
+import AttachmentPreview from '@/components/AttachmentPreview.vue';
+import { previewKind } from '@/components/AttachmentViewer.vue';
+import ShareLinkButton from '@/components/ShareLinkButton.vue';
+import OrgCard from '../OrgCard.vue';
 
 const props = defineProps<{ orgId: string; canEdit: boolean }>();
 const message = useMessage();
@@ -108,7 +112,15 @@ function remove(a: OrgAttachmentItem) {
 /* ---------- 展示辅助 ---------- */
 const ext = (name: string) => name.split('.').pop()?.toLowerCase() ?? '';
 const isImage = (a: OrgAttachmentItem) => /^(jpg|jpeg|png|webp|gif)$/.test(ext(a.name));
-const canPreview = (a: OrgAttachmentItem) => isImage(a) || ext(a.name) === 'pdf' || ext(a.name) === 'txt';
+const canPreview = (a: OrgAttachmentItem) => previewKind(a.name) !== 'none';
+
+/* ---------- 在线预览 ---------- */
+const previewing = ref<OrgAttachmentItem | null>(null);
+const showPreview = ref(false);
+function openPreview(a: OrgAttachmentItem) {
+  previewing.value = a;
+  showPreview.value = true;
+}
 
 function iconOf(a: OrgAttachmentItem) {
   const e = ext(a.name);
@@ -140,6 +152,7 @@ const canDelete = (a: OrgAttachmentItem) =>
 </script>
 
 <template>
+  <OrgCard :title="`附件资料${list.length ? `（${list.length}）` : ''}`">
   <div class="att">
     <!-- 上传区 -->
     <div
@@ -195,16 +208,16 @@ const canDelete = (a: OrgAttachmentItem) =>
 
     <div v-else class="grid">
       <div v-for="a in filtered" :key="a.id" class="file">
-        <a v-if="isImage(a)" class="thumb img" :href="url(a, true)" target="_blank" rel="noopener">
+        <button v-if="isImage(a)" class="thumb img" title="在线预览" @click="openPreview(a)">
           <img :src="url(a, true)" :alt="a.name" loading="lazy" />
-        </a>
+        </button>
         <div v-else :class="['thumb', `tone-${toneOf(a)}`]">
           <component :is="iconOf(a)" :size="20" :stroke-width="1.6" />
           <span class="thumb-ext">{{ ext(a.name).toUpperCase() }}</span>
         </div>
 
         <div class="file-body">
-          <div class="file-name" :title="a.name">{{ a.name }}</div>
+          <button class="file-name" :title="canPreview(a) ? `在线预览：${a.name}` : a.name" @click="openPreview(a)">{{ a.name }}</button>
           <div class="file-meta">
             <span class="cat">{{ ATTACHMENT_CATEGORY_LABEL[a.category as AttachmentCategory] ?? a.category }}</span>
             <span>{{ size(a.size) }}</span>
@@ -214,9 +227,10 @@ const canDelete = (a: OrgAttachmentItem) =>
         </div>
 
         <div class="file-actions">
-          <a v-if="canPreview(a)" class="icon-btn" :href="url(a, true)" target="_blank" rel="noopener" title="预览">
+          <button v-if="canPreview(a)" class="icon-btn" title="在线预览" @click="openPreview(a)">
             <Eye :size="15" :stroke-width="1.75" />
-          </a>
+          </button>
+          <ShareLinkButton :org-id="orgId" :att-id="a.id" />
           <a class="icon-btn" :href="url(a)" title="下载"><Download :size="15" :stroke-width="1.75" /></a>
           <button v-if="canDelete(a)" class="icon-btn danger" title="删除" @click="remove(a)">
             <Trash2 :size="15" :stroke-width="1.75" />
@@ -224,7 +238,19 @@ const canDelete = (a: OrgAttachmentItem) =>
         </div>
       </div>
     </div>
+
+    <AttachmentPreview
+      v-model:show="showPreview"
+      :name="previewing?.name ?? ''"
+      :url="previewing ? url(previewing, true) : ''"
+      :download-url="previewing ? url(previewing) : ''"
+    >
+      <template v-if="previewing" #actions>
+        <ShareLinkButton :org-id="orgId" :att-id="previewing.id" label="分享链接" />
+      </template>
+    </AttachmentPreview>
   </div>
+  </OrgCard>
 </template>
 
 <style scoped>
@@ -339,7 +365,7 @@ const canDelete = (a: OrgAttachmentItem) =>
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 10px;
 }
 .file {
@@ -396,6 +422,13 @@ const canDelete = (a: OrgAttachmentItem) =>
   min-width: 0;
 }
 .file-name {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--text);
@@ -414,10 +447,18 @@ const canDelete = (a: OrgAttachmentItem) =>
 .cat {
   color: var(--brand);
 }
+.file-name:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+.thumb.img {
+  padding: 0;
+  cursor: zoom-in;
+}
 .file-actions {
   display: flex;
   gap: 2px;
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity 0.15s;
 }
 .file:hover .file-actions,

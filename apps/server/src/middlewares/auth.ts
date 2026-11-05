@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
-import { permsOf, type Perm, type Role } from '@bdcrm/shared';
+import { KICKED_OUT_CODE, SINGLE_SESSION_ROLES, permsOf, type Perm, type Role } from '@bdcrm/shared';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
-import { Errors } from '../lib/http';
+import { AppError, Errors } from '../lib/http';
 import { pwdVersion, verifyToken } from '../lib/security';
 
 export interface AuthUser {
@@ -41,10 +41,16 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       isActive: true,
       mustChangePwd: true,
       passwordHash: true,
+      sessionId: true,
     },
   });
   if (!user || !user.isActive) throw Errors.unauthorized('账号不存在或已停用');
   if (payload.pv !== pwdVersion(user.passwordHash)) throw Errors.unauthorized('密码已变更，请重新登录');
+  // 单处登录：账号在别处重新登录后，本设备的令牌作废。
+  // 升级前签发的令牌没有 sid，且库里 sessionId 为空时视为同一会话，不会被误踢。
+  if (SINGLE_SESSION_ROLES.includes(user.role) && (payload.sid ?? null) !== user.sessionId) {
+    throw new AppError(401, '你的账号已在其他设备登录，当前设备已下线。如非本人操作，请尽快修改密码', KICKED_OUT_CODE);
+  }
   if (user.role === 'ORG' && !user.orgId) throw Errors.forbidden('机构账号未绑定机构，请联系管理员');
 
   req.user = {

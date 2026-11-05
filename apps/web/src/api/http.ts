@@ -19,8 +19,8 @@ interface RequestOptions {
   silent?: boolean;
 }
 
-let unauthorizedHandler: (() => void) | null = null;
-export function onUnauthorized(fn: () => void) {
+let unauthorizedHandler: ((err: ApiError) => void) | null = null;
+export function onUnauthorized(fn: (err: ApiError) => void) {
   unauthorizedHandler = fn;
 }
 
@@ -56,8 +56,9 @@ export async function request<T>(method: string, url: string, opts: RequestOptio
   }
 
   if (!res.ok || !payload || payload.code !== 0) {
-    if (res.status === 401 && !opts.silent) unauthorizedHandler?.();
-    throw new ApiError(res.status, payload?.message ?? `请求失败（${res.status}）`, payload?.code);
+    const err = new ApiError(res.status, payload?.message ?? `请求失败（${res.status}）`, payload?.code);
+    if (res.status === 401 && !opts.silent) unauthorizedHandler?.(err);
+    throw err;
   }
   return payload.data;
 }
@@ -88,8 +89,9 @@ export const http = {
           resolve(payload.data);
           return;
         }
-        if (xhr.status === 401) unauthorizedHandler?.();
-        reject(new ApiError(xhr.status, payload?.message ?? `上传失败（${xhr.status}）`, payload?.code));
+        const err = new ApiError(xhr.status, payload?.message ?? `上传失败（${xhr.status}）`, payload?.code);
+        if (xhr.status === 401) unauthorizedHandler?.(err);
+        reject(err);
       };
       xhr.send(form);
     }),

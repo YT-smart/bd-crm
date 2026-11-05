@@ -42,7 +42,7 @@ const results = computed<ResultItem[]>(() => [
     id: `org-${o.id}`,
     group: '合作机构',
     label: o.name,
-    sub: [o.province ? shortProvinceName(o.province) : null, o.city].filter(Boolean).join(' · '),
+    sub: [...new Set([o.city, ...(o.officeCities ?? [])].filter(Boolean))].join('、') || (o.province ? shortProvinceName(o.province) : ''),
     icon: Building2,
     to: { path: '/orgs', query: { keyword: o.name } },
   })),

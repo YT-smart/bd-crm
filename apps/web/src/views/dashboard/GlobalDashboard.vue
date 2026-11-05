@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useMessage } from 'naive-ui';
-import type { DashboardDistribution, DashboardLists, DashboardRange, DashboardSummary, TrendPoint } from '@bdcrm/shared';
+import { PERM, type DashboardDistribution, DashboardLists, DashboardRange, DashboardSummary, TrendPoint } from '@bdcrm/shared';
 import { dashboardApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 import { ApiError } from '@/api/http';
 import { money, num } from '@/utils/format';
 import StatCard from './components/StatCard.vue';
@@ -12,8 +13,11 @@ import BusinessDonut from './components/BusinessDonut.vue';
 import TopOrgs from './components/TopOrgs.vue';
 import DealTable from './components/DealTable.vue';
 import IncompleteOrgs from './components/IncompleteOrgs.vue';
+import DealOverview from './components/DealOverview.vue';
 
 const message = useMessage();
+/** 成交笔数 / 成交额 / 佣金等经营数据只给管理员看，员工看到的是机构维度的概览 */
+const finance = useAuthStore().can(PERM.DASHBOARD_FINANCE);
 
 const RANGES: { value: DashboardRange; label: string; period: string }[] = [
   { value: 'month', label: '本月', period: '本月' },
@@ -48,7 +52,7 @@ async function loadRange() {
 async function loadStatic() {
   loadingStatic.value = true;
   try {
-    const [t, l] = await Promise.all([dashboardApi.trend(), dashboardApi.lists()]);
+    const [t, l] = await Promise.all([finance ? dashboardApi.trend() : Promise.resolve([]), dashboardApi.lists()]);
     trend.value = t;
     lists.value = l;
   } catch (e) {
@@ -64,14 +68,6 @@ onMounted(() => {
 });
 watch(range, loadRange);
 
-/** 迷你趋势：区间为「本年」时用全部 12 个月，否则用近 6 个月，更能看出短期走势 */
-const sparkLen = computed(() => (range.value === 'year' ? 12 : 6));
-const spark = (pick: (t: TrendPoint) => number) => trend.value.slice(-sparkLen.value).map(pick);
-const orgSpark = computed(() => {
-  // 机构数用累计值
-  let acc = (summary.value?.orgTotal ?? 0) - trend.value.reduce((s, t) => s + t.newOrgs, 0);
-  return trend.value.map((t) => (acc += t.newOrgs)).slice(-sparkLen.value);
-});
 </script>
 
 <template>
@@ -92,60 +88,65 @@ const orgSpark = computed(() => {
       </div>
     </Teleport>
 
-    <section class="grid-12">
+    <!-- 管理员：经营数据在最上面，机构分布类放到下面 -->
+    <template v-if="finance">
+      <DealOverview class="ov-top" />
+
+      <section class="grid-12">
+        <TrendChart class="span-8 rise-in" style="animation-delay: 40ms" :data="trend" :loading="loadingStatic" />
+        <TopOrgs class="span-4 rise-in" style="animation-delay: 80ms" :data="dist?.topOrgs ?? []" :range-label="rangeLabel" :loading="loadingRange && !dist" />
+
+        <DealTable
+          class="span-8 rise-in"
+          style="animation-delay: 120ms"
+          title="待审核成交"
+          :sub="summary ? `待审核 ${summary.pendingAuditCount} 笔 · 应收未到账佣金 ${money(summary.receivable.amount)}（${summary.receivable.count} 笔）` : undefined"
+          :data="lists?.pendingDeals ?? []"
+          :loading="loadingStatic"
+        />
+        <IncompleteOrgs class="span-4 rise-in" style="animation-delay: 160ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
+
+        <ChinaMapCard class="span-8 rise-in" style="animation-delay: 200ms" :provinces="dist?.provinces ?? []" :loading="loadingRange && !dist" />
+        <BusinessDonut class="span-4 rise-in" style="animation-delay: 240ms" :data="dist?.businessTypes ?? []" :loading="loadingRange && !dist" />
+      </section>
+    </template>
+
+    <!-- 员工：只看机构维度，不展示成交、成交额、佣金 -->
+    <section v-else class="grid-12">
       <StatCard
-        class="span-3 rise-in"
-        label="合作机构"
+        class="span-6 rise-in"
+        label="合作中机构"
         :value="num(summary?.orgTotal)"
-        :note="`${rangeLabel}新增 ${summary?.orgNew.value ?? 0} 家`"
+        unit="家"
         :delta="null"
-        :spark="orgSpark"
         :loading="loadingRange && !summary"
       />
       <StatCard
-        class="span-3 rise-in"
+        class="span-6 rise-in"
         style="animation-delay: 40ms"
-        :label="`${rangeLabel}成交`"
-        :value="num(summary?.dealCount.value)"
-        unit="笔"
-        :delta="summary?.dealCount.delta"
-        :spark="spark((t) => t.dealCount)"
-        :loading="loadingRange && !summary"
-      />
-      <StatCard
-        class="span-3 rise-in"
-        style="animation-delay: 80ms"
-        :label="`${rangeLabel}成交额`"
-        :value="money(summary?.dealAmount.value)"
-        :delta="summary?.dealAmount.delta"
-        :spark="spark((t) => t.amount)"
-        :loading="loadingRange && !summary"
-      />
-      <StatCard
-        class="span-3 rise-in"
-        style="animation-delay: 120ms"
-        :label="`${rangeLabel}佣金收入`"
-        :value="money(summary?.commissionIncome.value)"
-        :delta="summary?.commissionIncome.delta"
-        :spark="spark((t) => t.settled)"
+        :label="`${rangeLabel}新增机构`"
+        :value="num(summary?.orgNew.value)"
+        unit="家"
+        :delta="summary?.orgNew.delta"
         :loading="loadingRange && !summary"
       />
 
-      <ChinaMapCard class="span-8 rise-in" style="animation-delay: 160ms" :provinces="dist?.provinces ?? []" :loading="loadingRange && !dist" />
-      <BusinessDonut class="span-4 rise-in" style="animation-delay: 200ms" :data="dist?.businessTypes ?? []" :loading="loadingRange && !dist" />
-
-      <TrendChart class="span-8 rise-in" style="animation-delay: 240ms" :data="trend" :loading="loadingStatic" />
-      <TopOrgs class="span-4 rise-in" style="animation-delay: 280ms" :data="dist?.topOrgs ?? []" :range-label="rangeLabel" :loading="loadingRange && !dist" />
-
-      <DealTable
+      <ChinaMapCard
         class="span-8 rise-in"
-        style="animation-delay: 320ms"
-        title="待审核成交"
-        :sub="summary ? `待审核 ${summary.pendingAuditCount} 笔 · 应收未到账佣金 ${money(summary.receivable.amount)}（${summary.receivable.count} 笔）` : undefined"
-        :data="lists?.pendingDeals ?? []"
-        :loading="loadingStatic"
+        style="animation-delay: 80ms"
+        :provinces="dist?.provinces ?? []"
+        :loading="loadingRange && !dist"
+        :finance="false"
       />
-      <IncompleteOrgs class="span-4 rise-in" style="animation-delay: 360ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
+      <BusinessDonut class="span-4 rise-in" style="animation-delay: 120ms" :data="dist?.businessTypes ?? []" :loading="loadingRange && !dist" />
+
+      <IncompleteOrgs class="span-12 rise-in" style="animation-delay: 160ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
     </section>
   </div>
 </template>
+
+<style scoped>
+.ov-top {
+  margin-bottom: 16px;
+}
+</style>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
-import { NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, NEmpty, NTimeline, NTimelineItem, useMessage, useDialog } from 'naive-ui';
+import { NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, NTimeline, NTimelineItem, useMessage, useDialog } from 'naive-ui';
 import { Plus, Trash2, Phone, MessageCircle, Users, Mail } from 'lucide-vue-next';
 import type { OrgFollowUpItem, FollowUpInput } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { date } from '@/utils/format';
+import OrgCard from '../OrgCard.vue';
 
 const props = withDefaults(defineProps<{ orgId: string; canEdit?: boolean }>(), { canEdit: true });
 const message = useMessage();
@@ -98,13 +99,12 @@ function handleDelete(fu: OrgFollowUpItem) {
 </script>
 
 <template>
-  <div>
-    <div class="tab-header">
-      <span class="text-2">共 {{ followUps.length }} 条跟进记录</span>
-      <button v-if="canEdit" class="btn btn-sm" @click="openAdd"><Plus :size="14" /> 添加跟进</button>
-    </div>
+  <OrgCard :title="`跟进记录${followUps.length ? `（${followUps.length}）` : ''}`">
+    <template v-if="canEdit" #extra>
+      <button class="btn-outline-sm" @click="openAdd"><Plus :size="13" /> 添加跟进</button>
+    </template>
 
-    <NEmpty v-if="!followUps.length && !loading" description="暂无跟进记录" style="margin-top: 40px" />
+    <div v-if="!followUps.length && !loading" class="empty text-3">暂无跟进记录</div>
 
     <NTimeline v-else>
       <NTimelineItem v-for="fu in followUps" :key="fu.id" :time="date(fu.followAt) + ' · ' + fu.userName">
@@ -147,15 +147,14 @@ function handleDelete(fu: OrgFollowUpItem) {
         </div>
       </template>
     </NModal>
-  </div>
+  </OrgCard>
 </template>
 
 <style scoped>
-.tab-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+.empty {
+  font-size: 13px;
+  padding: 18px 0;
+  text-align: center;
 }
 .fu-card {
   padding: 10px 14px;

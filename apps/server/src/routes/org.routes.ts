@@ -17,7 +17,8 @@ import type { Request } from 'express';
 import { ok, Errors } from '../lib/http';
 import { requirePerm } from '../middlewares/auth';
 import { PASSWORD_RULE } from '../lib/security';
-import { canInline, decodeOriginalName, isPdf, mimeOf, orgUploader, removeStoredFile, resolveStorageKey, toStorageKey } from '../lib/storage';
+import { canInline, decodeOriginalName, isPdf, mimeOf, orgImageUploader, orgUploader, removeStoredFile, resolveStorageKey, toStorageKey } from '../lib/storage';
+import { createShareToken } from '../lib/share';
 import { fmtDay } from '../lib/date';
 import { writeAudit } from '../services/audit.service';
 import {
@@ -41,6 +42,8 @@ import {
   deleteAttachment,
   listStaff,
   exportOrgs,
+  setWechatQr,
+  getWechatQrKey,
 } from '../services/org.service';
 
 const router = Router();
@@ -68,7 +71,8 @@ const listSchema = z.object({
   province: z.enum(PROVINCES).optional(),
   status: z.nativeEnum(OrgStatus).optional(),
   level: z.enum(ORG_LEVELS).optional(),
-  sort: z.enum(['createdAt', 'defaultRate', 'name', 'level', 'dealCount']).optional(),
+  country: z.enum(COUNTRIES).optional(),
+  sort: z.enum(['createdAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -92,6 +96,8 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
     name: o.name,
     province: o.province ?? '',
     city: o.city ?? '',
+    officeCities: o.officeCities.join('、'),
+    countries: o.countries.join('、'),
     status: ORG_STATUS_LABEL[o.status] ?? o.status,
     level: o.level ?? '',
     defaultRate: Number(o.defaultRate),
@@ -370,6 +376,17 @@ router.get('/:id/attachments/:attId/download', requirePerm(...CAN_VIEW), async (
   });
 });
 
+/** 生成免登录分享链接：默认长期有效（days = 0），附件删除后失效 */
+const shareSchema = z.object({ days: z.union([z.literal(1), z.literal(7), z.literal(30), z.literal(0)]).default(0) });
+
+router.post('/:id/attachments/:attId/share', requirePerm(...CAN_VIEW), async (req, res) => {
+  const a = await getAttachment(req.params.id, req.params.attId);
+  const { days } = shareSchema.parse(req.body ?? {});
+  const expiresAt = days ? Date.now() + days * 24 * 3600 * 1000 : 0;
+  writeAudit(req, { module: 'org', action: 'shareAttachment', targetId: req.params.id, targetName: a.name, after: { days } });
+  ok(res, { token: createShareToken(a.id, expiresAt), expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null });
+});
+
 router.delete('/:id/attachments/:attId', requirePerm(...CAN_EDIT), async (req, res) => {
   const a = await getAttachment(req.params.id, req.params.attId);
   // 机构账号只能删除自己上传的附件（合同等员工上传的资料不能被机构删掉）
@@ -378,6 +395,35 @@ router.delete('/:id/attachments/:attId', requirePerm(...CAN_EDIT), async (req, r
   }
   await deleteAttachment(req.params.attId);
   writeAudit(req, { module: 'org', action: 'deleteAttachment', targetId: req.params.id, targetName: a.name });
+  ok(res, null);
+});
+
+/* ============ 公众号二维码 ============ */
+
+router.get('/:id/wechat-qr', requirePerm(...CAN_VIEW), async (req, res) => {
+  const key = await getWechatQrKey(req.params.id);
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+  res.sendFile(resolveStorageKey(key), { headers: { 'Content-Type': mimeOf(key) } }, (err) => {
+    if (err && !res.headersSent) res.status(404).json({ code: 404, data: null, message: '文件已丢失' });
+  });
+});
+
+router.post('/:id/wechat-qr', requirePerm(...CAN_EDIT), orgImageUploader().single('file'), async (req, res) => {
+  const f = req.file;
+  if (!f) throw Errors.badRequest('请选择二维码图片');
+  try {
+    await setWechatQr(String(req.params.id), toStorageKey(f.path));
+  } catch (e) {
+    await removeStoredFile(toStorageKey(f.path));
+    throw e;
+  }
+  writeAudit(req, { module: 'org', action: 'update', targetId: String(req.params.id), targetName: '上传公众号二维码' });
+  ok(res, null, 201);
+});
+
+router.delete('/:id/wechat-qr', requirePerm(...CAN_EDIT), async (req, res) => {
+  await setWechatQr(req.params.id, null);
+  writeAudit(req, { module: 'org', action: 'update', targetId: req.params.id, targetName: '删除公众号二维码' });
   ok(res, null);
 });
 

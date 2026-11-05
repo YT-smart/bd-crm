@@ -17,6 +17,8 @@ export interface TokenPayload {
   role: Role;
   /** 密码版本指纹：密码变更后旧令牌自动失效 */
   pv?: string;
+  /** 登录会话 id：管理员 / 员工同一时间只有一个有效会话 */
+  sid?: string;
 }
 
 /** 由密码哈希派生的短指纹（HMAC，不暴露哈希本身） */

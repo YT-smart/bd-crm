@@ -83,6 +83,33 @@ export function orgUploader() {
   });
 }
 
+const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+
+/** 单张图片上传（公众号二维码等），存放在 orgs/<orgId>/ 下 */
+export function orgImageUploader(maxMb = 5) {
+  return multer({
+    storage: multer.diskStorage({
+      destination: (req, _file, cb) => {
+        const dir = path.join(UPLOAD_ROOT, 'orgs', String(req.params.id));
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        cb(null, `${randomUUID()}${path.extname(decodeOriginalName(file.originalname)).toLowerCase()}`);
+      },
+    }),
+    limits: { fileSize: maxMb * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(decodeOriginalName(file.originalname)).toLowerCase();
+      if (!IMAGE_EXT.has(ext)) {
+        cb(new AppError(400, '请上传 jpg / png / webp / gif 格式的图片'));
+        return;
+      }
+      cb(null, true);
+    },
+  });
+}
+
 /** 磁盘绝对路径 -> 存库用的相对 key */
 export function toStorageKey(absPath: string) {
   return path.relative(UPLOAD_ROOT, absPath).split(path.sep).join('/');

@@ -9,7 +9,7 @@
  */
 import { PrismaClient, type DealStatus, type OrgStatus, type Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { BUSINESS_TYPES, COUNTRIES, computeCompleteness } from '@bdcrm/shared';
+import { BUSINESS_TYPES, COUNTRY_GROUPS, computeCompleteness } from '@bdcrm/shared';
 
 const prisma = new PrismaClient();
 
@@ -41,6 +41,9 @@ function sample<T>(arr: readonly T[], n: number): T[] {
   return out;
 }
 const DAY = 24 * 3600 * 1000;
+/** 演示用的分公司城市 */
+const BRANCH_CITIES = ['北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '西安', '重庆', '苏州', '长沙', '天津', '青岛', '厦门'];
+
 const now = new Date();
 const daysAgo = (d: number) => new Date(now.getTime() - d * DAY);
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -177,7 +180,7 @@ async function main() {
 
     const rich = chance(0.7);
     const businessTypes = sample(BUSINESS_TYPES, int(1, 3));
-    const countries = sample(COUNTRIES, int(1, 5));
+    const countries = sample(COUNTRY_GROUPS[0].items, int(1, 5));
     const contactCount = rich ? int(1, 3) : chance(0.5) ? 1 : 0;
     const productTpls = rich || status === 'ACTIVE' ? sample(PRODUCT_TEMPLATES, int(1, 4)) : [];
 
@@ -192,7 +195,8 @@ async function main() {
       logo: null,
       businessTypes,
       countries,
-      officeCities: [city],
+      // 约 40% 的机构有多个办公地点（总部城市在前）
+      officeCities: [city, ...(chance(0.4) ? sample(BRANCH_CITIES.filter((c) => c !== city), int(1, 4)) : [])],
       tags: sample(['高转化', '重点维护', '新签约', '续约中', '高客单', '低龄方向'], int(0, 2)),
       level,
       status,
