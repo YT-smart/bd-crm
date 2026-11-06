@@ -30,7 +30,7 @@ const filled = (v?: string | null) => typeof v === 'string' && v.trim().length >
 
 const RULES: Rule[] = [
   { label: '机构名称', weight: 10, test: (o) => filled(o.name) },
-  { label: '机构优势', weight: 5, test: (o) => filled(o.advantage) },
+  { label: '机构一句话优势', weight: 5, test: (o) => filled(o.advantage) },
   { label: '机构简介', weight: 10, test: (o) => filled(o.intro) },
   { label: '总部城市', weight: 10, test: (o) => filled(o.province) && filled(o.city) },
   { label: '详细地址', weight: 5, test: (o) => filled(o.address) },

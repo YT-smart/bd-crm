@@ -17,6 +17,11 @@ export const PERM = {
   ORG_IMPORT: 'org:import',
   ORG_EXPORT: 'org:export',
 
+  /** 机构合作信息（佣金结算周期、合同期限、收款账户），仅管理员 */
+  ORG_COOPERATION: 'org:cooperation',
+  /** 机构评价（内部），员工和管理员 */
+  ORG_REVIEW: 'org:review',
+
   MY_ORG: 'my-org:manage',
 
   DEAL_VIEW: 'deal:view',
@@ -38,6 +43,7 @@ export const ROLE_PERMS: Record<Role, readonly Perm[]> = {
     PERM.DASHBOARD_GLOBAL,
     PERM.ORG_VIEW,
     PERM.ORG_EXPORT,
+    PERM.ORG_REVIEW,
     PERM.DEAL_VIEW,
   ],
   ORG: [PERM.DASHBOARD_ORG, PERM.MY_ORG, PERM.DEAL_VIEW, PERM.DEAL_CREATE],

@@ -12,6 +12,7 @@ import {
   type OrgContactItem,
   type OrgProductItem,
   type OrgFollowUpItem,
+  type OrgReviewItem,
   type OrgAttachmentItem,
   type PageResult,
   type StaffOption,
@@ -33,7 +34,7 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
       { name: { contains: kw, mode: 'insensitive' } },
       { city: { contains: kw, mode: 'insensitive' } },
       { province: { contains: kw } },
-      // 办公城市：任一办公地点命中即可（兼容输入「杭州市」）
+      // 校区城市：任一校区命中即可（兼容输入「杭州市」）
       { officeCities: { has: normalizeCityKeyword(kw) } },
       { contacts: { some: { OR: [{ name: { contains: kw } }, { phone: { contains: kw } }] } } },
     ];
@@ -42,6 +43,15 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
   if (q.status) where.status = q.status;
   if (q.level) where.level = q.level;
   if (q.country) where.countries = { has: q.country };
+  // 以下条件各自是一组 OR，与关键词的 OR 用 AND 组合
+  const and: Prisma.OrgWhereInput[] = [];
+  // 业务类型：机构开展的业务，或任一产品属于该类型（与仪表盘地图口径一致）
+  if (q.businessType) {
+    and.push({ OR: [{ businessTypes: { has: q.businessType } }, { products: { some: { type: q.businessType } } }] });
+  }
+  // 城市：总部城市或任一校区城市命中
+  if (q.city) and.push({ OR: [{ city: q.city }, { officeCities: { has: q.city } }] });
+  if (and.length) where.AND = and;
   return where;
 }
 
@@ -172,7 +182,8 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     include: {
       owner: { select: { name: true } },
       contacts: { orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
-      products: { orderBy: { createdAt: 'asc' } },
+      // 推荐级别高（数字小）的产品排前面，未设置级别的排最后
+      products: { orderBy: [{ level: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] },
       attachments: {
         orderBy: { createdAt: 'desc' },
         include: { uploadedBy: { select: { name: true } } },
@@ -234,6 +245,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     priceMin: num(p.priceMin) || null,
     priceMax: num(p.priceMax) || null,
     rate: p.rate != null ? num(p.rate) : null,
+    level: p.level,
     note: p.note,
   }));
 
@@ -350,7 +362,7 @@ export async function updateOrg(orgId: string, input: Partial<Prisma.OrgUnchecke
     if (dup) throw new AppError(409, `机构"${input.name}"已存在`);
   }
 
-  // 省市一致性校验 + 总部城市自动并入办公城市
+  // 省市一致性校验 + 总部城市自动并入校区城市
   const province = (input.province !== undefined ? input.province : org.province) as string | null;
   const city = (input.city !== undefined ? input.city : org.city) as string | null;
   if (city && province && PROVINCE_OF_CITY[city] !== province) {
@@ -412,16 +424,16 @@ export async function deleteContact(orgId: string, contactId: string) {
 
 /* ---------- 产品 CRUD ---------- */
 
-export async function addProduct(orgId: string, input: { name: string; type: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; note?: string | null }) {
+export async function addProduct(orgId: string, input: { name: string; type: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; level?: number | null; note?: string | null }) {
   await ensureOrg(orgId);
   const product = await prisma.orgProduct.create({
-    data: { orgId, name: input.name, type: input.type, priceMin: input.priceMin ?? null, priceMax: input.priceMax ?? null, rate: input.rate ?? null, note: input.note ?? null },
+    data: { orgId, name: input.name, type: input.type, priceMin: input.priceMin ?? null, priceMax: input.priceMax ?? null, rate: input.rate ?? null, level: input.level ?? null, note: input.note ?? null },
   });
   await refreshCompleteness(orgId);
   return product;
 }
 
-export async function updateProduct(orgId: string, productId: string, input: { name?: string; type?: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; note?: string | null }) {
+export async function updateProduct(orgId: string, productId: string, input: { name?: string; type?: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; level?: number | null; note?: string | null }) {
   const product = await prisma.orgProduct.findFirst({ where: { id: productId, orgId } });
   if (!product) throw new AppError(404, '产品不存在');
   return prisma.orgProduct.update({ where: { id: productId }, data: input });
@@ -465,6 +477,35 @@ export async function deleteFollowUp(followUpId: string, userId: string, isAdmin
   if (!fu) throw new AppError(404, '跟进记录不存在');
   if (!isAdmin && fu.userId !== userId) throw new AppError(403, '只能删除自己的跟进记录');
   await prisma.followUp.delete({ where: { id: followUpId } });
+}
+
+/* ---------- 机构评价（内部） ---------- */
+
+export async function listReviews(orgId: string): Promise<OrgReviewItem[]> {
+  const rows = await prisma.orgReview.findMany({
+    where: { orgId },
+    orderBy: { createdAt: 'desc' },
+    include: { user: { select: { name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    userId: r.userId,
+    userName: r.user.name,
+    content: r.content,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function addReview(orgId: string, userId: string, content: string) {
+  await ensureOrg(orgId);
+  return prisma.orgReview.create({ data: { orgId, userId, content } });
+}
+
+export async function deleteReview(orgId: string, reviewId: string, userId: string, isAdmin: boolean) {
+  const r = await prisma.orgReview.findFirst({ where: { id: reviewId, orgId } });
+  if (!r) throw new AppError(404, '评价不存在');
+  if (!isAdmin && r.userId !== userId) throw new AppError(403, '只能删除自己写的评价');
+  await prisma.orgReview.delete({ where: { id: reviewId } });
 }
 
 /* ---------- 附件 ---------- */

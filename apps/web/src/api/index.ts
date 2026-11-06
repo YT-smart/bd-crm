@@ -30,6 +30,9 @@ import type {
   StaffOption,
   TrendPoint,
   UserProfile,
+  OrgReviewItem,
+  MapSearchQuery,
+  MapSearchResult,
 } from '@bdcrm/shared';
 import { http } from './http';
 
@@ -47,6 +50,7 @@ export const dashboardApi = {
   trend: () => http.get<TrendPoint[]>('/dashboard/trend'),
   distribution: (range: DashboardRange) => http.get<DashboardDistribution>('/dashboard/distribution', { range }),
   lists: () => http.get<DashboardLists>('/dashboard/lists'),
+  map: (q: MapSearchQuery) => http.get<MapSearchResult>('/dashboard/map', { ...q }),
   my: () => http.get<MyOrgDashboard>('/dashboard/my'),
 };
 
@@ -79,6 +83,11 @@ export const orgApi = {
   addFollowUp: (orgId: string, data: FollowUpInput) =>
     http.post<{ id: string }>(`/orgs/${orgId}/follow-ups`, data),
   deleteFollowUp: (orgId: string, fuId: string) => http.del<null>(`/orgs/${orgId}/follow-ups/${fuId}`),
+
+  /* 机构评价（内部） */
+  reviews: (orgId: string) => http.get<OrgReviewItem[]>(`/orgs/${orgId}/reviews`),
+  addReview: (orgId: string, content: string) => http.post<{ id: string }>(`/orgs/${orgId}/reviews`, { content }),
+  deleteReview: (orgId: string, reviewId: string) => http.del<null>(`/orgs/${orgId}/reviews/${reviewId}`),
 
   /* 附件 */
   attachments: (orgId: string) => http.get<OrgAttachmentItem[]>(`/orgs/${orgId}/attachments`),

@@ -11,6 +11,9 @@ import OrgStatsCard from './tabs/OrgStatsCard.vue';
 import OrgDealsTab from './tabs/OrgDealsTab.vue';
 import OrgFollowUpsTab from './tabs/OrgFollowUpsTab.vue';
 import OrgAttachmentsTab from './tabs/OrgAttachmentsTab.vue';
+import OrgReviewsCard from './tabs/OrgReviewsCard.vue';
+import { PERM } from '@bdcrm/shared';
+import { useAuthStore } from '@/stores/auth';
 
 /**
  * 机构完整资料：卡片式分块，左侧主信息、右侧联系方式与合作数据，所有信息一屏内纵向浏览。
@@ -21,6 +24,10 @@ withDefaults(
   { canEdit: true, internal: true },
 );
 const emit = defineEmits<{ refresh: [] }>();
+const auth = useAuthStore();
+/** 合作信息（结算、合同、收款账户）只给管理员看；评价员工和管理员都能看能写 */
+const canSeeCooperation = auth.can(PERM.ORG_COOPERATION);
+const canReview = auth.can(PERM.ORG_REVIEW);
 
 const showEdit = ref(false);
 function openEdit() {
@@ -70,7 +77,8 @@ defineExpose({ openEdit });
         @refresh="emit('refresh')"
       />
       <OrgStatsCard :stats="org.stats" />
-      <OrgCooperationTab v-if="internal" :org="org" :can-edit="canEdit" @updated="emit('refresh')" />
+      <OrgReviewsCard v-if="internal && canReview" :org-id="org.id" />
+      <OrgCooperationTab v-if="internal && canSeeCooperation" :org="org" :can-edit="canEdit" @updated="emit('refresh')" />
       <OrgFollowUpsTab v-if="internal" :org-id="org.id" :can-edit="canEdit" />
     </div>
 

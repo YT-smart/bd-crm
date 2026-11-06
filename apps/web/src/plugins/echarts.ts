@@ -2,7 +2,7 @@
  * ECharts 按需引入，只注册用到的图表与组件，减小包体积。
  */
 import * as echarts from 'echarts/core';
-import { BarChart, LineChart, MapChart, PieChart } from 'echarts/charts';
+import { BarChart, EffectScatterChart, LineChart, MapChart, PieChart, ScatterChart } from 'echarts/charts';
 import {
   GeoComponent,
   GridComponent,
@@ -15,6 +15,8 @@ import type { EChartsOption } from 'echarts';
 
 echarts.use([
   BarChart,
+  EffectScatterChart,
+  ScatterChart,
   LineChart,
   MapChart,
   PieChart,

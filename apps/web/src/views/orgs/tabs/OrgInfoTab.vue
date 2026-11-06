@@ -6,7 +6,7 @@ import {
 } from 'naive-ui';
 import { Save } from 'lucide-vue-next';
 import {
-  BUSINESS_TYPES, COUNTRY_GROUPS, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
+  BUSINESS_TYPES, BUSINESS_TYPE_MAX_LEN, COUNTRY_GROUPS, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
   shortProvinceName, type OrgDetail, type Province,
 } from '@bdcrm/shared';
 import { orgApi } from '@/api';
@@ -39,6 +39,11 @@ const form = reactive({
   level: null as string | null,
 });
 
+/** 业务类型下拉里的「其他（自定义）」 */
+const OTHER = '__other__';
+/** 勾选「其他」时填写的自定义业务类型 */
+const customType = ref('');
+
 /** resetForm 期间不触发总部城市联动 */
 let resetting = false;
 
@@ -54,6 +59,7 @@ function resetForm() {
   form.wechat = props.org.wechat ?? '';
   form.scale = props.org.scale ?? '';
   form.businessTypes = [...props.org.businessTypes];
+  customType.value = '';
   form.countries = [...props.org.countries];
   form.officeCities = [...props.org.officeCities];
   form.tags = [...props.org.tags];
@@ -64,7 +70,20 @@ function resetForm() {
 watch(() => props.org, resetForm, { immediate: true });
 
 const provinceOptions = PROVINCES.map((p) => ({ label: shortProvinceName(p), value: p }));
-const businessTypeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
+/** 常用业务类型 + 机构已有的自定义类型；也可以直接输入新的类型 */
+const businessTypeOptions = computed(() => [
+  ...[...new Set([...BUSINESS_TYPES, ...props.org.businessTypes, ...form.businessTypes])]
+    .filter((t) => t !== OTHER)
+    .map((t) => ({ label: t, value: t })),
+  { label: '其他（自定义）', value: OTHER },
+]);
+/** 提交用的业务类型：把「其他」换成填写的内容 */
+function finalBusinessTypes() {
+  const list = form.businessTypes.filter((t) => t !== OTHER);
+  const c = customType.value.trim();
+  if (form.businessTypes.includes(OTHER) && c && !list.includes(c)) list.push(c);
+  return list;
+}
 const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
   type: 'group',
   key: g.label,
@@ -93,7 +112,7 @@ watch(() => form.province, (p) => {
   if (form.city && p && PROVINCE_OF_CITY[form.city] !== p) form.city = null;
 });
 
-// 选择总部城市：自动带出省份，并同步到办公城市（改选时替换掉之前的总部城市，而不是累加）
+// 选择总部城市：自动带出省份，并同步到校区城市（改选时替换掉之前的总部城市，而不是累加）
 watch(() => form.city, (c, old) => {
   if (resetting) return;
   let offices = form.officeCities;
@@ -119,7 +138,9 @@ const isDirty = computed(() => {
     form.wechat !== (o.wechat ?? '') ||
     form.scale !== (o.scale ?? '') ||
     form.level !== o.level ||
-    JSON.stringify(form.businessTypes) !== JSON.stringify(o.businessTypes) ||
+    // 勾了「其他」也算改动，这样点保存时能提示去填写
+    form.businessTypes.includes(OTHER) ||
+    JSON.stringify(finalBusinessTypes()) !== JSON.stringify(o.businessTypes) ||
     JSON.stringify(form.countries) !== JSON.stringify(o.countries) ||
     JSON.stringify(form.officeCities) !== JSON.stringify(o.officeCities) ||
     JSON.stringify(form.tags) !== JSON.stringify(o.tags)
@@ -129,6 +150,10 @@ const isDirty = computed(() => {
 async function save() {
   if (!form.name.trim()) {
     message.warning('机构名称不能为空');
+    return;
+  }
+  if (form.businessTypes.includes(OTHER) && !customType.value.trim()) {
+    message.warning('选择了「其他」，请填写自定义的业务类型');
     return;
   }
   saving.value = true;
@@ -143,7 +168,7 @@ async function save() {
       website: form.website || null,
       wechat: form.wechat || null,
       scale: form.scale || null,
-      businessTypes: form.businessTypes,
+      businessTypes: finalBusinessTypes(),
       countries: form.countries,
       officeCities: form.officeCities,
     });
@@ -200,7 +225,16 @@ async function save() {
             v-model:value="form.businessTypes"
             :options="businessTypeOptions"
             multiple
-            placeholder="选择业务类型"
+            :max-tag-count="12"
+            placeholder="选择业务类型（留学、语培、竞赛…），没有的选「其他」自己填写"
+          />
+        </NFormItem>
+        <NFormItem v-if="form.businessTypes.includes(OTHER)" label="其他业务类型" class="full">
+          <NInput
+            id="org-custom-type"
+            v-model:value="customType"
+            :maxlength="BUSINESS_TYPE_MAX_LEN"
+            placeholder="填写业务类型，如：夏令营、艺术留学"
           />
         </NFormItem>
         <NFormItem label="覆盖国家和地区" class="full">
@@ -212,7 +246,7 @@ async function save() {
             placeholder="选择覆盖国家和地区（可搜索）"
           />
         </NFormItem>
-        <NFormItem label="办公城市" class="full">
+        <NFormItem label="校区城市" class="full">
           <NSelect
             id="org-info-office-cities"
             v-model:value="form.officeCities"
@@ -220,17 +254,17 @@ async function save() {
             multiple
             filterable
             :max-tag-count="12"
-            placeholder="选择办公城市（总部城市会自动加入）"
+            placeholder="选择校区城市（总部城市会自动加入）"
           />
         </NFormItem>
         <NFormItem v-if="!isOrgUser" label="标签" class="full">
           <NDynamicTags v-model:value="form.tags" :max="10" :disabled="!canEdit" />
         </NFormItem>
-        <NFormItem label="机构优势" class="full">
+        <NFormItem label="机构一句话优势" class="full">
           <NInput
             id="org-info-advantage"
             v-model:value="form.advantage"
-            placeholder="一句话介绍机构优势，如：专注英港新硕士申请，名校录取率行业领先"
+            placeholder="一句话介绍机构的优势，如：专注英港新硕士申请，名校录取率行业领先"
             maxlength="100"
             show-count
           />

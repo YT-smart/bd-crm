@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
-  BUSINESS_TYPES,
+  BUSINESS_TYPE_MAX_LEN,
+  PRODUCT_LEVELS,
   COUNTRIES,
   ORG_LEVELS,
   OrgStatus,
@@ -36,6 +37,9 @@ import {
   listFollowUps,
   addFollowUp,
   deleteFollowUp,
+  listReviews,
+  addReview,
+  deleteReview,
   listAttachments,
   createAttachment,
   getAttachment,
@@ -60,6 +64,8 @@ router.param('id', (req, _res, next, id) => {
 
 /** 城市只能从内置城市库中选择，防止随意填写 */
 const citySchema = z.string().trim().refine(isCity, '请从下拉列表中选择城市');
+/** 业务类型：常用项或自定义（任意简短文本） */
+const businessTypeSchema = z.string().trim().min(1, '业务类型不能为空').max(BUSINESS_TYPE_MAX_LEN, `业务类型请控制在 ${BUSINESS_TYPE_MAX_LEN} 字以内`);
 const optionalCity = z.preprocess((v) => (v === '' ? null : v), citySchema.nullish());
 
 /* ============ 列表与筛选 ============ */
@@ -72,6 +78,8 @@ const listSchema = z.object({
   status: z.nativeEnum(OrgStatus).optional(),
   level: z.enum(ORG_LEVELS).optional(),
   country: z.enum(COUNTRIES).optional(),
+  city: citySchema.optional(),
+  businessType: z.string().trim().min(1).max(BUSINESS_TYPE_MAX_LEN).optional(),
   sort: z.enum(['createdAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
@@ -92,20 +100,23 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
   const q = listSchema.parse(req.query);
   const rows = await exportOrgs(q);
   // 返回 JSON 数据，前端使用 SheetJS 生成 xlsx
+  // 结算周期属于合作信息，只有管理员导出时才带上
+  const withCooperation = req.user!.permissions.includes(PERM.ORG_COOPERATION);
+  // 直接用中文列名，前端 SheetJS 生成 xlsx 时作为表头
   const data = rows.map((o) => ({
-    name: o.name,
-    province: o.province ?? '',
-    city: o.city ?? '',
-    officeCities: o.officeCities.join('、'),
-    countries: o.countries.join('、'),
-    status: ORG_STATUS_LABEL[o.status] ?? o.status,
-    level: o.level ?? '',
-    defaultRate: Number(o.defaultRate),
-    businessTypes: o.businessTypes.join('、'),
-    settleCycle: o.settleCycle ? SETTLE_CYCLE_LABEL[o.settleCycle] : '',
-    contactName: o.contacts[0]?.name ?? '',
-    contactPhone: o.contacts[0]?.phone ?? '',
-    createdAt: fmtDay(o.createdAt),
+    机构名称: o.name,
+    省份: o.province ?? '',
+    总部城市: o.city ?? '',
+    校区城市: o.officeCities.join('、'),
+    覆盖国家和地区: o.countries.join('、'),
+    合作状态: ORG_STATUS_LABEL[o.status] ?? o.status,
+    等级: o.level ?? '',
+    '默认佣金(%)': Number(o.defaultRate),
+    业务类型: o.businessTypes.join('、'),
+    ...(withCooperation ? { 结算周期: o.settleCycle ? SETTLE_CYCLE_LABEL[o.settleCycle] : '' } : {}),
+    联系人: o.contacts[0]?.name ?? '',
+    联系电话: o.contacts[0]?.phone ?? '',
+    入驻时间: fmtDay(o.createdAt),
   }));
   writeAudit(req, { module: 'org', action: 'export', targetName: `导出 ${data.length} 条` });
   ok(res, data);
@@ -114,7 +125,13 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
 /* ============ 详情 ============ */
 
 router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
-  ok(res, await getOrgDetail(req.params.id));
+  const detail = await getOrgDetail(req.params.id);
+  // 合作信息（结算周期、合同期限、收款账户）只给管理员；机构账号仍可看自己的
+  const u = req.user!;
+  if (u.role !== 'ORG' && !u.permissions.includes(PERM.ORG_COOPERATION)) {
+    Object.assign(detail, { settleCycle: null, bankInfo: null, contractStart: null, contractEnd: null });
+  }
+  ok(res, detail);
 });
 
 /* ============ 新增机构 ============ */
@@ -156,7 +173,7 @@ router.post('/', requirePerm(PERM.ORG_CREATE), async (req, res) => {
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   logo: z.string().max(500).nullish(),
-  advantage: z.string().trim().max(100, '机构优势请控制在 100 字以内').nullish(),
+  advantage: z.string().trim().max(100, '机构一句话优势请控制在 100 字以内').nullish(),
   intro: z.string().max(2000).nullish(),
   province: z.enum(PROVINCES).nullish(),
   city: optionalCity,
@@ -171,7 +188,7 @@ const updateSchema = z.object({
   wechat: z.string().max(100).nullish(),
   foundedAt: z.string().datetime().nullish().or(z.literal('')),
   scale: z.string().max(50).nullish(),
-  businessTypes: z.array(z.enum(BUSINESS_TYPES)).optional(),
+  businessTypes: z.array(businessTypeSchema).max(12).optional(),
   countries: z.array(z.enum(COUNTRIES)).optional(),
   officeCities: z.array(citySchema).max(30).optional(),
   tags: z.array(z.string().max(30)).max(10).optional(),
@@ -260,7 +277,8 @@ router.delete('/:id/contacts/:contactId', requirePerm(...CAN_EDIT), async (req, 
 
 const productSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  type: z.enum(BUSINESS_TYPES),
+  type: businessTypeSchema,
+  level: z.number().int().refine((v) => (PRODUCT_LEVELS as readonly number[]).includes(v), '推荐级别只能是 1-4').nullish(),
   priceMin: z.number().min(0).nullish(),
   priceMax: z.number().min(0).nullish(),
   rate: z.number().min(0).max(100).nullish(),
@@ -310,6 +328,30 @@ router.post('/:id/follow-ups', requirePerm(PERM.ORG_UPDATE), async (req, res) =>
 router.delete('/:id/follow-ups/:fuId', requirePerm(PERM.ORG_UPDATE), async (req, res) => {
   const isAdmin = req.user!.role === 'ADMIN';
   await deleteFollowUp(req.params.fuId, req.user!.id, isAdmin);
+  ok(res, null);
+});
+
+/* ============ 机构评价（内部，机构账号不可见） ============ */
+
+const reviewSchema = z.object({
+  content: z.string().trim().min(1, '评价内容不能为空').max(1000, '评价请控制在 1000 字以内'),
+});
+
+router.get('/:id/reviews', requirePerm(PERM.ORG_REVIEW), async (req, res) => {
+  ok(res, await listReviews(req.params.id));
+});
+
+router.post('/:id/reviews', requirePerm(PERM.ORG_REVIEW), async (req, res) => {
+  const orgId = req.params.id;
+  const { content } = reviewSchema.parse(req.body);
+  const r = await addReview(orgId, req.user!.id, content);
+  writeAudit(req, { module: 'org', action: 'addReview', targetId: orgId, after: { content } });
+  ok(res, { id: r.id }, 201);
+});
+
+router.delete('/:id/reviews/:reviewId', requirePerm(PERM.ORG_REVIEW), async (req, res) => {
+  await deleteReview(req.params.id, req.params.reviewId, req.user!.id, req.user!.role === 'ADMIN');
+  writeAudit(req, { module: 'org', action: 'deleteReview', targetId: req.params.id });
   ok(res, null);
 });
 

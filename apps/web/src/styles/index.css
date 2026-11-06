@@ -519,7 +519,7 @@ button {
   border-bottom: 0;
 }
 .kv-label {
-  flex: 0 0 96px;
+  flex: 0 0 110px;
   color: var(--text-3);
 }
 .kv-value {

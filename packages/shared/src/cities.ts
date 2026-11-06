@@ -2,7 +2,7 @@ import type { Province } from './regions';
 
 /**
  * 各省级行政区下的地级城市（含自治州 / 地区 / 盟，使用常用简称，不带「市」后缀）。
- * 机构的总部城市、办公城市只能从这里选择，避免手填出现「杭州市 / 杭州 / hangzhou」等不一致写法。
+ * 机构的总部城市、校区城市只能从这里选择，避免手填出现「杭州市 / 杭州 / hangzhou」等不一致写法。
  * 直辖市、港澳台以自身作为城市。
  */
 export const CITIES_BY_PROVINCE: Record<Province, readonly string[]> = {

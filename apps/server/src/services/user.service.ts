@@ -168,9 +168,10 @@ export async function deleteUser(userId: string) {
   const used = await Promise.all([
     prisma.deal.count({ where: { OR: [{ createdById: userId }, { auditedById: userId }, { settledById: userId }] } }),
     prisma.followUp.count({ where: { userId } }),
+    prisma.orgReview.count({ where: { userId } }),
   ]);
-  if (used[0] + used[1] > 0) {
-    throw new AppError(409, '该账号已有成交或跟进记录，为保留历史请改为停用');
+  if (used.some((n) => n > 0)) {
+    throw new AppError(409, '该账号已有成交、跟进或评价记录，为保留历史请改为停用');
   }
   await prisma.user.delete({ where: { id: userId } });
 }

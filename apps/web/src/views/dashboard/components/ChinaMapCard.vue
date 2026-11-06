@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { NButton, NSkeleton } from 'naive-ui';
-import { ArrowRight, MapPin } from 'lucide-vue-next';
-import { shortProvinceName, type ProvinceStat } from '@bdcrm/shared';
+import { NButton, NInput, NSelect, NSkeleton } from 'naive-ui';
+import { useDebounceFn } from '@vueuse/core';
+import { ArrowRight, MapPin, Search } from 'lucide-vue-next';
+import { BUSINESS_TYPES, shortProvinceName, type MapSearchResult, type ProvinceStat } from '@bdcrm/shared';
+import { dashboardApi } from '@/api';
+import { CITY_COORDS } from '@/utils/cityCoords';
 import EChart from '@/components/EChart.vue';
 import { ensureChinaMap, type EChartsOption } from '@/plugins/echarts';
-import { tooltipBase, useChartTheme } from '@/composables/useChartTheme';
+import { tooltipBase, useChartTheme, type ChartTheme } from '@/composables/useChartTheme';
 import { money, moneyShort, num } from '@/utils/format';
 
 const props = withDefaults(
@@ -36,6 +39,49 @@ async function loadMap() {
 }
 onMounted(loadMap);
 
+/* ---------- 地图筛选：机构名称 / 业务类型 → 校区城市标点 ---------- */
+const keyword = ref('');
+const businessType = ref<string | null>(null);
+const businessTypeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
+const searching = ref(false);
+const result = shallowRef<MapSearchResult | null>(null);
+const filtering = computed(() => !!(keyword.value.trim() || businessType.value));
+
+let seq = 0;
+async function runSearch() {
+  if (!filtering.value) {
+    result.value = null;
+    return;
+  }
+  const my = ++seq;
+  searching.value = true;
+  try {
+    const r = await dashboardApi.map({ keyword: keyword.value.trim() || undefined, businessType: businessType.value ?? undefined });
+    if (my === seq) result.value = r;
+  } catch {
+    if (my === seq) result.value = null;
+  } finally {
+    if (my === seq) searching.value = false;
+  }
+}
+const debouncedSearch = useDebounceFn(runSearch, 300);
+watch(keyword, debouncedSearch);
+watch(businessType, runSearch);
+
+function clearFilter() {
+  keyword.value = '';
+  businessType.value = null;
+}
+
+const filterProvinceMap = computed(() => new Map((result.value?.provinces ?? []).map((p) => [p.name, p])));
+const filterMax = computed(() => Math.max(1, ...(result.value?.provinces ?? []).map((p) => p.count)));
+const cityPoints = computed(() =>
+  (result.value?.cities ?? [])
+    .filter((c) => CITY_COORDS[c.name])
+    .map((c) => ({ name: c.name, value: [...CITY_COORDS[c.name], c.count], orgs: c.orgs, count: c.count })),
+);
+const maxCityCount = computed(() => Math.max(1, ...cityPoints.value.map((c) => c.count)));
+
 const totalOrgs = computed(() => props.provinces.reduce((s, p) => s + p.count, 0));
 const coveredProvinces = computed(() => props.provinces.filter((p) => p.count > 0).length);
 const ranking = computed(() => [...props.provinces].sort((a, b) => b.count - a.count).slice(0, 8));
@@ -49,29 +95,57 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+function row(t: ChartTheme, k: string, v: string) {
+  return `<div style="display:flex;justify-content:space-between;gap:24px;line-height:1.9"><span style="color:${t.text3}">${k}</span><span style="font-variant-numeric:tabular-nums;font-weight:500">${v}</span></div>`;
+}
+function orgNames(t: ChartTheme, names: string[], total: number) {
+  if (!names.length) return '';
+  const more = total > names.length ? ` 等 ${total} 家` : '';
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid ${t.tooltipBorder};color:${t.text2};max-width:260px;white-space:normal">${names.map(escapeHtml).join('、')}${more}</div>`;
+}
+
 const option = computed<EChartsOption>(() => {
   const t = theme.value;
+  const f = filtering.value && result.value;
   return {
     tooltip: {
       ...tooltipBase(t),
       trigger: 'item',
       formatter: (params: unknown) => {
-        const p = params as { name: string };
+        const p = params as { name: string; seriesType?: string; data?: { orgs?: string[]; count?: number } };
         if (!p.name) return '';
-        const s = statByName.value.get(p.name);
         const title = `<div style="font-weight:600;font-size:13px;margin-bottom:6px">${escapeHtml(p.name)}</div>`;
+        // 筛选模式：城市标点 / 省份
+        if (p.seriesType === 'effectScatter' || p.seriesType === 'scatter') {
+          const d = p.data!;
+          return (
+            title +
+            row(t, '校区机构', `${num(d.count)} 家`) +
+            orgNames(t, d.orgs ?? [], d.count ?? 0) +
+            `<div style="margin-top:6px;color:${t.brand};font-size:12px">点击查看这些机构</div>`
+          );
+        }
+        if (f) {
+          const a = filterProvinceMap.value.get(p.name);
+          if (!a) return `${title}<div style="color:${t.text3}">没有匹配的校区</div>`;
+          return (
+            title +
+            row(t, '有校区的机构', `${num(a.count)} 家`) +
+            orgNames(t, a.orgs, a.count) +
+            `<div style="margin-top:6px;color:${t.brand};font-size:12px">点击地图上的城市圆点查看机构</div>`
+          );
+        }
+        const s = statByName.value.get(p.name);
         if (!s) return `${title}<div style="color:${t.text3}">暂无合作机构</div>`;
-        const row = (k: string, v: string) =>
-          `<div style="display:flex;justify-content:space-between;gap:24px;line-height:1.9"><span style="color:${t.text3}">${k}</span><span style="font-variant-numeric:tabular-nums;font-weight:500">${v}</span></div>`;
         const cities = s.topCities.length
           ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid ${t.tooltipBorder};color:${t.text3}">主要城市：${s.topCities.map(escapeHtml).join('、')}</div>`
           : '';
         return (
           title +
-          row('合作机构', `${num(s.count)} 家`) +
-          row('合作中', `${num(s.active)} 家`) +
+          row(t, '合作机构', `${num(s.count)} 家`) +
+          row(t, '合作中', `${num(s.active)} 家`) +
           (props.finance
-            ? row('累计成交', `${num(s.dealCount)} 笔`) + row('累计成交额', money(s.amount)) + row('累计佣金', money(s.commission))
+            ? row(t, '累计成交', `${num(s.dealCount)} 笔`) + row(t, '累计成交额', money(s.amount)) + row(t, '累计佣金', money(s.commission))
             : '') +
           cities +
           `<div style="margin-top:6px;color:${t.brand};font-size:12px">点击查看该省机构</div>`
@@ -80,8 +154,9 @@ const option = computed<EChartsOption>(() => {
     },
     visualMap: {
       type: 'continuous',
+      seriesIndex: 0,
       min: 0,
-      max: maxCount.value,
+      max: f ? filterMax.value : maxCount.value,
       left: 8,
       bottom: 8,
       itemWidth: 10,
@@ -93,28 +168,46 @@ const option = computed<EChartsOption>(() => {
       inRange: { color: t.mapRange },
       outOfRange: { color: t.mapEmpty },
     },
+    geo: {
+      map: 'china',
+      roam: false,
+      layoutCenter: ['52%', '58%'],
+      layoutSize: '118%',
+      selectedMode: false,
+      label: { show: false },
+      itemStyle: { areaColor: t.mapEmpty, borderColor: t.mapBorder, borderWidth: 0.8 },
+      emphasis: {
+        label: { show: true, color: t.dark ? '#fff' : t.ink, fontSize: 11, fontWeight: 600 },
+        itemStyle: { areaColor: t.accent, borderColor: t.mapBorder, borderWidth: 1 },
+      },
+    },
     series: [
       {
         type: 'map',
-        map: 'china',
-        roam: false,
-        layoutCenter: ['52%', '58%'],
-        layoutSize: '118%',
-        selectedMode: false,
-        label: { show: false },
-        itemStyle: {
-          areaColor: t.mapEmpty,
-          borderColor: t.mapBorder,
-          borderWidth: 0.8,
+        geoIndex: 0,
+        data: f
+          ? result.value!.provinces.map((p) => ({ name: p.name, value: p.count }))
+          : props.provinces.map((p) => ({ name: p.name, value: p.count })),
+      },
+      {
+        type: 'effectScatter',
+        coordinateSystem: 'geo',
+        // 校区城市标点：机构越多点越大
+        symbolSize: (v: number[]) => 8 + Math.round((v[2] / maxCityCount.value) * 10),
+        rippleEffect: { scale: 2.6, brushType: 'stroke' },
+        itemStyle: { color: t.accent, shadowBlur: 6, shadowColor: 'rgba(0,0,0,.25)' },
+        label: {
+          show: cityPoints.value.length <= 20,
+          formatter: '{b}',
+          position: 'right',
+          fontSize: 11,
+          color: t.dark ? '#fff' : t.ink,
         },
-        emphasis: {
-          label: { show: true, color: t.dark ? '#fff' : t.ink, fontSize: 11, fontWeight: 600 },
-          itemStyle: { areaColor: t.accent, borderColor: t.mapBorder, borderWidth: 1 },
-        },
-        data: props.provinces.map((p) => ({ name: p.name, value: p.count })),
+        zlevel: 1,
+        data: f ? cityPoints.value : [],
       },
     ],
-  };
+  } as EChartsOption;
 });
 
 function goProvince(name: string) {
@@ -122,8 +215,16 @@ function goProvince(name: string) {
 }
 
 function onMapClick(params: unknown) {
-  const p = params as { componentType?: string; name?: string };
-  if (p.componentType === 'series' && p.name && statByName.value.has(p.name)) goProvince(p.name);
+  const p = params as { componentType?: string; seriesType?: string; name?: string };
+  if (!p.name) return;
+  // 筛选模式下点城市 / 省份：带上关键词跳到机构列表
+  if (p.seriesType === 'effectScatter') {
+    router.push({ name: 'orgs', query: { city: p.name, keyword: keyword.value.trim() || undefined, businessType: businessType.value ?? undefined } });
+    return;
+  }
+  // 筛选模式下省份按「校区」统计，和机构列表的省份（按总部）口径不同，所以只响应城市圆点的点击
+  if (filtering.value) return;
+  if (p.componentType === 'series' && statByName.value.has(p.name)) goProvince(p.name);
 }
 </script>
 
@@ -142,9 +243,30 @@ function onMapClick(params: unknown) {
       </button>
     </div>
 
+    <div class="map-filter">
+      <NInput id="map-search" v-model:value="keyword" size="small" clearable placeholder="搜索机构，如：新东方，在地图上显示它的全部校区" class="map-search">
+        <template #prefix><Search :size="14" :stroke-width="1.75" class="text-3" /></template>
+      </NInput>
+      <NSelect
+        id="map-business"
+        v-model:value="businessType"
+        :options="businessTypeOptions"
+        size="small"
+        clearable
+        filterable
+        tag
+        placeholder="业务 / 产品类型"
+        class="map-sel"
+      />
+      <span v-if="filtering && result" class="map-filter-hit">
+        找到 <strong class="num">{{ result.orgCount }}</strong> 家机构，<strong class="num">{{ result.cities.length }}</strong> 个校区城市
+      </span>
+      <button v-if="filtering" id="map-filter-clear" class="link-btn" @click="clearFilter">清除</button>
+    </div>
+
     <div class="map-body">
       <div class="map-wrap">
-        <NSkeleton v-if="loading || (!mapReady && !mapError)" class="map-skeleton" />
+        <NSkeleton v-if="(loading && !filtering) || (!mapReady && !mapError)" class="map-skeleton" />
         <div v-else-if="mapError" class="map-error">
           <MapPin :size="20" :stroke-width="1.75" />
           <span>{{ mapError }}</span>
@@ -153,7 +275,22 @@ function onMapClick(params: unknown) {
         <EChart v-else :option="option" @chart-click="onMapClick" />
       </div>
 
-      <div class="rank">
+      <div v-if="filtering" class="rank">
+        <div class="rank-title">{{ searching ? '搜索中…' : '匹配的机构' }}</div>
+        <div v-if="result && !result.orgs.length && !searching" class="rank-empty text-3">没有匹配的机构</div>
+        <ul v-else-if="result" class="hit-list">
+          <li v-for="o in result.orgs" :key="o.id">
+            <button class="hit-item" :title="o.cities.join('、')" @click="router.push(`/orgs/${o.id}`)">
+              <span class="hit-name">{{ o.name }}</span>
+              <span class="hit-sub">{{ o.cities.length }} 个校区 · {{ o.cities.slice(0, 4).join('、') }}{{ o.cities.length > 4 ? '…' : '' }}</span>
+            </button>
+          </li>
+        </ul>
+        <div v-if="result && result.orgCount > result.orgs.length" class="rank-foot">
+          仅列出前 {{ result.orgs.length }} 家，可缩小搜索范围
+        </div>
+      </div>
+      <div v-else class="rank">
         <div class="rank-title">省份排行</div>
         <template v-if="loading">
           <NSkeleton v-for="i in 8" :key="i" text style="height: 18px; margin: 9px 0" />
@@ -293,6 +430,64 @@ function onMapClick(params: unknown) {
 .rank-foot strong {
   color: var(--text);
   font-weight: 600;
+}
+.map-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 4px;
+}
+.map-search {
+  width: 300px;
+  max-width: 100%;
+}
+.map-sel {
+  width: 150px;
+}
+.map-filter-hit {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.map-filter-hit strong {
+  color: var(--brand);
+  font-weight: 600;
+}
+.rank-empty {
+  font-size: 13px;
+  padding: 16px 0;
+}
+.hit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.hit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.hit-item:hover {
+  background: var(--neutral-soft);
+}
+.hit-name {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+.hit-sub {
+  font-size: 12px;
+  color: var(--text-3);
 }
 @media (max-width: 720px) {
   .map-body {

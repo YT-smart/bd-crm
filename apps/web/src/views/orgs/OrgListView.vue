@@ -5,11 +5,15 @@ import { NDataTable, NInput, NSelect, useMessage, type DataTableColumns, type Da
 import { useDebounceFn } from '@vueuse/core';
 import { Download, MapPin, Plus, RotateCcw, Search, X } from 'lucide-vue-next';
 import {
+  BUSINESS_TYPES,
+  BUSINESS_TYPE_MAX_LEN,
+  CITIES_BY_PROVINCE,
   COUNTRIES,
   COUNTRY_GROUPS,
   ORG_LEVELS,
   ORG_STATUS_LABEL,
   PROVINCES,
+  isCity,
   isProvince,
   shortProvinceName,
   type OrgListItem,
@@ -36,12 +40,16 @@ function fromQuery() {
   const status = s('status');
   const level = s('level');
   const country = s('country');
+  const city = s('city');
+  const businessType = s('businessType');
   return {
     keyword: s('keyword') ?? '',
     province: province && isProvince(province) ? province : null,
     status: status && status in ORG_STATUS_LABEL ? (status as OrgStatus) : null,
     level: level && (ORG_LEVELS as readonly string[]).includes(level) ? level : null,
     country: country && (COUNTRIES as readonly string[]).includes(country) ? country : null,
+    city: city && isCity(city) ? city : null,
+    businessType: businessType && businessType.length <= BUSINESS_TYPE_MAX_LEN ? businessType : null,
     page: Math.max(1, Number(s('page')) || 1),
   };
 }
@@ -56,7 +64,15 @@ const total = ref(0);
 const loading = ref(false);
 const showCreate = ref(false);
 
-const provinceOptions = PROVINCES.map((p) => ({ label: shortProvinceName(p), value: p }));
+/** 城市下拉：按省份分组，可搜索 */
+const cityOptions: SelectGroupOption[] = PROVINCES.map((p) => ({
+  type: 'group',
+  key: p,
+  label: shortProvinceName(p),
+  children: CITIES_BY_PROVINCE[p].map((c) => ({ label: c, value: c })),
+}));
+/** 业务类型：常用项，也可以直接输入自定义类型搜索 */
+const businessTypeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
 const statusOptions = (Object.keys(ORG_STATUS_LABEL) as OrgStatus[]).map((k) => ({ label: ORG_STATUS_LABEL[k], value: k }));
 const levelOptions = ORG_LEVELS.map((l) => ({ label: `${l} 级`, value: l }));
 /** 热门留学目的地分组排在最前 */
@@ -67,7 +83,7 @@ const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
   children: g.items.map((c) => ({ label: c, value: c })),
 }));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.status || filters.level || filters.country));
+const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.city || filters.businessType || filters.status || filters.level || filters.country));
 const canCreate = computed(() => auth.can('org:create'));
 const canExport = computed(() => auth.can('org:export'));
 
@@ -79,6 +95,8 @@ function syncUrl() {
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
       country: filters.country ?? undefined,
+      city: filters.city ?? undefined,
+      businessType: filters.businessType ?? undefined,
       page: filters.page > 1 ? String(filters.page) : undefined,
     },
   });
@@ -97,6 +115,8 @@ async function load() {
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
       country: filters.country ?? undefined,
+      city: filters.city ?? undefined,
+      businessType: filters.businessType ?? undefined,
       sort: sort.value?.key,
       order: sort.value?.order,
     });
@@ -118,7 +138,7 @@ const debouncedKeyword = useDebounceFn(() => {
 
 watch(() => filters.keyword, debouncedKeyword);
 watch(
-  () => [filters.province, filters.status, filters.level, filters.country],
+  () => [filters.province, filters.city, filters.businessType, filters.status, filters.level, filters.country],
   () => {
     filters.page = 1;
     syncUrl();
@@ -137,7 +157,9 @@ watch(
       next.province !== filters.province ||
       next.status !== filters.status ||
       next.level !== filters.level ||
-      next.country !== filters.country
+      next.country !== filters.country ||
+      next.city !== filters.city ||
+      next.businessType !== filters.businessType
     ) {
       Object.assign(filters, next);
     }
@@ -147,7 +169,7 @@ watch(
 load();
 
 function reset() {
-  Object.assign(filters, { keyword: '', province: null, status: null, level: null, country: null, page: 1 });
+  Object.assign(filters, { keyword: '', province: null, city: null, businessType: null, status: null, level: null, country: null, page: 1 });
 }
 
 function onPage(p: number) {
@@ -182,6 +204,8 @@ async function handleExport() {
       status: filters.status ?? undefined,
       level: filters.level ?? undefined,
       country: filters.country ?? undefined,
+      city: filters.city ?? undefined,
+      businessType: filters.businessType ?? undefined,
     });
     // 使用 SheetJS 生成 xlsx（动态导入）
     const XLSX = await import('xlsx');
@@ -219,15 +243,33 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
       ]),
   },
   {
-    title: '地区',
+    title: '城市',
     key: 'region',
-    minWidth: 150,
+    minWidth: 170,
     render: (r) => {
-      // 只显示城市名：总部城市在前，其余办公城市依次列出
-      const cities = [...new Set([r.city, ...(r.officeCities ?? [])].filter((c): c is string => !!c))];
-      const text = cities.length ? cities.join('、') : r.province ? shortProvinceName(r.province) : '--';
-      // 城市多时换行，最多两行，其余悬停查看
-      return h('span', { class: 'text-2 region-cell', title: text }, text);
+      // 总部城市在前，其余校区城市依次列出；点城市直接筛选该城市的机构
+      let cities = [...new Set([r.city, ...(r.officeCities ?? [])].filter((c): c is string => !!c))];
+      // 正在筛选的城市排到最前，避免被折叠进 +n
+      if (filters.city && cities.includes(filters.city)) cities = [filters.city, ...cities.filter((c) => c !== filters.city)];
+      if (!cities.length) return h('span', { class: 'text-3' }, r.province ? shortProvinceName(r.province) : '--');
+      const MAX = 4;
+      return h('div', { class: 'city-cell', title: cities.join('、') }, [
+        ...cities.slice(0, MAX).map((c) =>
+          h(
+            'button',
+            {
+              class: ['city-chip', { hit: c === filters.city }],
+              title: `查看「${c}」的机构`,
+              onClick: (e: MouseEvent) => {
+                e.stopPropagation();
+                filters.city = filters.city === c ? null : c;
+              },
+            },
+            c,
+          ),
+        ),
+        cities.length > MAX ? h('span', { class: 'country-more' }, `+${cities.length - MAX}`) : null,
+      ]);
     },
   },
   {
@@ -315,17 +357,27 @@ const pagination = computed(() => ({
 <template>
   <div class="page">
     <div class="card toolbar rise-in">
-      <NInput id="org-search" v-model:value="filters.keyword" placeholder="搜索机构名称、城市（含办公城市）、联系人、电话" clearable class="search">
+      <NInput id="org-search" v-model:value="filters.keyword" placeholder="搜索机构名称、城市（含校区城市）、联系人、电话" clearable class="search">
         <template #prefix><Search :size="16" :stroke-width="1.75" class="text-3" /></template>
       </NInput>
       <NSelect
-        id="org-filter-province"
-        v-model:value="filters.province"
-        :options="provinceOptions"
-        placeholder="所在省份"
+        id="org-filter-city"
+        v-model:value="filters.city"
+        :options="cityOptions"
+        placeholder="城市"
         clearable
         filterable
         class="sel"
+      />
+      <NSelect
+        id="org-filter-business"
+        v-model:value="filters.businessType"
+        :options="businessTypeOptions"
+        placeholder="业务类型"
+        clearable
+        filterable
+        tag
+        class="sel sm"
       />
       <NSelect
         id="org-filter-country"
@@ -352,6 +404,11 @@ const pagination = computed(() => ({
       </div>
     </div>
 
+    <div v-if="filters.city" class="from-map rise-in">
+      <MapPin :size="14" :stroke-width="1.75" />
+      正在查看在 <strong>{{ filters.city }}</strong> 有校区的机构
+      <button id="clear-city" class="chip-x" aria-label="清除城市筛选" @click="filters.city = null"><X :size="12" /></button>
+    </div>
     <div v-if="filters.province" class="from-map rise-in">
       <MapPin :size="14" :stroke-width="1.75" />
       正在查看 <strong>{{ filters.province }}</strong> 的合作机构
@@ -485,13 +542,31 @@ const pagination = computed(() => ({
   background: var(--neutral-soft);
   color: var(--text-2);
 }
-:deep(.region-cell) {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  line-height: 1.5;
+:deep(.city-cell) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+:deep(.city-chip) {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--info-soft);
+  color: var(--info);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+:deep(.city-chip:hover) {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+:deep(.city-chip.hit) {
+  background: var(--brand);
+  color: #fff;
 }
 :deep(.country-cell) {
   display: flex;

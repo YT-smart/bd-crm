@@ -99,6 +99,29 @@ export interface DashboardDistribution {
   topOrgs: TopOrgItem[];
 }
 
+/** 地图筛选：按机构名称 / 业务类型找出机构，并按校区城市落到地图上 */
+export interface MapSearchQuery {
+  keyword?: string;
+  businessType?: string;
+}
+export interface MapAreaStat {
+  name: string;
+  /** 在该省 / 城市有校区的机构数 */
+  count: number;
+  /** 机构名称（最多 8 个） */
+  orgs: string[];
+}
+export interface MapCityStat extends MapAreaStat {
+  province: string;
+}
+export interface MapSearchResult {
+  orgCount: number;
+  /** 命中的机构（最多 20 个），用于结果列表 */
+  orgs: { id: string; name: string; cities: string[] }[];
+  provinces: MapAreaStat[];
+  cities: MapCityStat[];
+}
+
 export interface DealBrief {
   id: string;
   orgId: string;
@@ -154,7 +177,7 @@ export interface OrgListItem {
   name: string;
   province: string | null;
   city: string | null;
-  /** 办公城市（含总部城市） */
+  /** 校区城市（含总部城市） */
   officeCities: string[];
   /** 覆盖国家和地区 */
   countries: string[];
@@ -185,6 +208,10 @@ export interface OrgListQuery {
   level?: string;
   /** 覆盖国家和地区 */
   country?: string;
+  /** 城市：总部城市或任一校区城市命中 */
+  city?: string;
+  /** 业务类型 */
+  businessType?: string;
   sort?: 'createdAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate';
   order?: 'asc' | 'desc';
 }
@@ -208,7 +235,18 @@ export interface OrgProductItem {
   priceMin: number | null;
   priceMax: number | null;
   rate: number | null;
+  /** 推荐级别 1-4，1 为主推；未设置为 null */
+  level: number | null;
   note: string | null;
+}
+
+/** 机构评价：员工和管理员可见、可写，机构账号看不到 */
+export interface OrgReviewItem {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  createdAt: string;
 }
 
 export interface OrgFollowUpItem {
@@ -350,6 +388,7 @@ export interface ProductInput {
   priceMin?: number | null;
   priceMax?: number | null;
   rate?: number | null;
+  level?: number | null;
   note?: string | null;
 }
 

@@ -96,15 +96,17 @@ export const ATTACHMENT_CATEGORY_LABEL: Record<AttachmentCategory, string> = {
 /** 单个附件大小上限（MB） */
 export const ATTACHMENT_MAX_MB = 20;
 
-export const BUSINESS_TYPES = [
-  '留学申请',
-  '语言培训',
-  '背景提升',
-  '低龄留学',
-  '游学营地',
-  '移民咨询',
-  '其他',
-] as const;
+/**
+ * 常用业务类型（下拉里的快捷选项）。机构 / 产品还可以自定义输入其他类型，
+ * 所以库里存的是任意字符串，这里只是推荐项。
+ */
+export const BUSINESS_TYPES = ['留学', '语培', '竞赛', '科研', '求职', '公益'] as const;
+/** 自定义业务类型的长度上限 */
+export const BUSINESS_TYPE_MAX_LEN = 20;
+
+/** 产品推荐级别：1 级为主推，数字越小越靠前 */
+export const PRODUCT_LEVELS = [1, 2, 3, 4] as const;
+export const PRODUCT_LEVEL_LABEL: Record<number, string> = { 1: '1 级 · 主推', 2: '2 级', 3: '3 级', 4: '4 级' };
 
 /**
  * 覆盖国家和地区，按大洲分组；"热门留学目的地"排在最前。

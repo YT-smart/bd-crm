@@ -44,6 +44,16 @@ router.get('/distribution', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res)
   ok(res, data);
 });
 
+const mapSearchSchema = z.object({
+  keyword: z.string().trim().max(50).optional(),
+  businessType: z.string().trim().max(20).optional(),
+});
+
+/** 地图筛选：按机构名称 / 业务类型，展示机构的校区城市分布 */
+router.get('/map', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
+  ok(res, await dashboard.searchMap(mapSearchSchema.parse(req.query)));
+});
+
 router.get('/lists', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
   const data = await dashboard.getLists();
   if (!canSeeFinance(req.user!.permissions)) {

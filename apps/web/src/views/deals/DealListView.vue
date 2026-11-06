@@ -53,7 +53,6 @@ const statusTabs = computed<Array<{ label: string; value: string | null; count: 
 /* ---------- 筛选与列表 ---------- */
 const filters = reactive({
   keyword: '',
-  orgId: null as string | null,
   status: null as DealStatus | null,
   dateRange: rangeFromQuery(),
   page: 1,
@@ -82,7 +81,6 @@ async function load() {
       page: filters.page,
       pageSize: pageSize.value,
       keyword: filters.keyword || undefined,
-      orgId: filters.orgId ?? undefined,
       status: filters.status ?? undefined,
       startDate: filters.dateRange ? date(filters.dateRange[0]) : undefined,
       endDate: filters.dateRange ? date(filters.dateRange[1]) : undefined,
@@ -103,14 +101,14 @@ async function reload() { await Promise.all([load(), loadSummary()]); }
 
 const debouncedKeyword = useDebounceFn(() => { filters.page = 1; load(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
-watch(() => [filters.orgId, filters.status, filters.dateRange], () => { filters.page = 1; load(); });
+watch(() => [filters.status, filters.dateRange], () => { filters.page = 1; load(); });
 // 仪表盘带过来的日期参数只用于首次进入；之后改动日期筛选就去掉，避免刷新又被带回来
 watch(() => filters.dateRange, () => {
   if (route.query.start || route.query.end) router.replace({ query: { ...route.query, start: undefined, end: undefined } });
 });
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', orgId: null, status: null, dateRange: null, page: 1 });
+  Object.assign(filters, { keyword: '', status: null, dateRange: null, page: 1 });
   checkedKeys.value = [];
 }
 
@@ -121,10 +119,31 @@ function onSorter(s: any) {
   load();
 }
 
+/** 排序下拉（与表头排序同步）：机构太多不再提供机构下拉，用关键词搜机构名即可 */
+const SORT_OPTIONS = [
+  { label: '默认排序', value: '' },
+  { label: '成交额从高到低', value: 'amount:desc' },
+  { label: '成交额从低到高', value: 'amount:asc' },
+  { label: '佣金从高到低', value: 'commission:desc' },
+  { label: '佣金从低到高', value: 'commission:asc' },
+  { label: '成交日期最新', value: 'dealAt:desc' },
+  { label: '成交日期最早', value: 'dealAt:asc' },
+  { label: '录入时间最新', value: 'createdAt:desc' },
+  { label: '录入时间最早', value: 'createdAt:asc' },
+];
+const sortValue = computed({
+  get: () => (sort.value ? `${sort.value.key}:${sort.value.order}` : ''),
+  set: (v: string) => {
+    const [key, order] = v.split(':');
+    sort.value = v ? { key: key as DealListQuery['sort'], order: order as 'asc' | 'desc' } : null;
+    filters.page = 1;
+    load();
+  },
+});
+
 /* ---------- 机构选项 ---------- */
 const orgOptions = ref<OrgOption[]>([]);
 const orgSelectOptions = computed(() => orgOptions.value.map((o) => ({ label: o.name, value: o.id })));
-const orgFilterOptions = computed(() => [{ label: '全部机构', value: null as any }, ...orgSelectOptions.value]);
 
 async function loadOrgOptions() {
   try { orgOptions.value = await dealApi.orgOptions(); } catch {}
@@ -314,7 +333,6 @@ async function handleExport() {
   try {
     const data = await dealApi.exportData({
       keyword: filters.keyword || undefined,
-      orgId: filters.orgId ?? undefined,
       status: filters.status ?? undefined,
       startDate: filters.dateRange ? date(filters.dateRange[0]) : undefined,
       endDate: filters.dateRange ? date(filters.dateRange[1]) : undefined,
@@ -416,7 +434,7 @@ const pagination = computed(() => ({
   prefix: () => `共 ${total.value} 条`,
 }));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.orgId || filters.dateRange));
+const hasFilter = computed(() => !!(filters.keyword || filters.dateRange));
 
 /* ---------- 初始化 ---------- */
 onMounted(async () => {
@@ -465,7 +483,7 @@ onMounted(async () => {
       <NInput v-model:value="filters.keyword" placeholder="搜索学生姓名、机构名" clearable class="search">
         <template #prefix><Search :size="16" :stroke-width="1.75" class="text-3" /></template>
       </NInput>
-      <NSelect v-model:value="filters.orgId" :options="orgFilterOptions" placeholder="机构" clearable filterable class="sel" />
+      <NSelect id="deal-sort" v-model:value="sortValue" :options="SORT_OPTIONS" class="sel" />
       <NDatePicker v-model:value="filters.dateRange" type="daterange" clearable placeholder="成交日期范围" class="date-pick" />
       <button v-if="hasFilter" class="link-btn reset" @click="resetFilters">
         <RotateCcw :size="14" /> 重置

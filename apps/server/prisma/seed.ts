@@ -96,15 +96,15 @@ const SURNAMES = '王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗高�
 const GIVEN = ['子涵', '欣怡', '梓萱', '浩然', '宇轩', '一诺', '思远', '雨桐', '佳怡', '俊杰', '梓睿', '若曦', '晨阳', '诗涵', '嘉懿', '明哲', '沐宸', '可馨', '奕辰', '语嫣', '书瑶', '天佑', '芷若', '博文', '安琪', '景行', '静怡', '思源', '泽宇', '心悦'];
 const TITLES = ['校长', '总经理', '市场总监', '合作经理', '运营主管', '顾问主管'];
 const PRODUCT_TEMPLATES: readonly { name: string; type: string; min: number; max: number }[] = [
-  { name: '美国本科申请全程服务', type: '留学申请', min: 60000, max: 180000 },
-  { name: '英国硕士申请', type: '留学申请', min: 30000, max: 80000 },
-  { name: '澳洲本硕连读规划', type: '留学申请', min: 35000, max: 90000 },
+  { name: '美国本科申请全程服务', type: '留学', min: 60000, max: 180000 },
+  { name: '英国硕士申请', type: '留学', min: 30000, max: 80000 },
+  { name: '澳洲本硕连读规划', type: '留学', min: 35000, max: 90000 },
   { name: '加拿大高中直通车', type: '低龄留学', min: 50000, max: 150000 },
-  { name: '新加坡公立大学申请', type: '留学申请', min: 25000, max: 60000 },
-  { name: '香港硕士申请', type: '留学申请', min: 20000, max: 50000 },
-  { name: '雅思 7 分保分班', type: '语言培训', min: 12000, max: 36000 },
-  { name: '托福 100+ 冲刺', type: '语言培训', min: 15000, max: 40000 },
-  { name: '科研背景提升项目', type: '背景提升', min: 20000, max: 68000 },
+  { name: '新加坡公立大学申请', type: '留学', min: 25000, max: 60000 },
+  { name: '香港硕士申请', type: '留学', min: 20000, max: 50000 },
+  { name: '雅思 7 分保分班', type: '语培', min: 12000, max: 36000 },
+  { name: '托福 100+ 冲刺', type: '语培', min: 15000, max: 40000 },
+  { name: '科研背景提升项目', type: '科研', min: 20000, max: 68000 },
   { name: '名校夏校游学营', type: '游学营地', min: 30000, max: 80000 },
   { name: 'A-Level 全科课程', type: '低龄留学', min: 80000, max: 260000 },
 ];
@@ -195,7 +195,7 @@ async function main() {
       logo: null,
       businessTypes,
       countries,
-      // 约 40% 的机构有多个办公地点（总部城市在前）
+      // 约 40% 的机构有多个校区（总部城市在前）
       officeCities: [city, ...(chance(0.4) ? sample(BRANCH_CITIES.filter((c) => c !== city), int(1, 4)) : [])],
       tags: sample(['高转化', '重点维护', '新签约', '续约中', '高客单', '低龄方向'], int(0, 2)),
       level,
@@ -231,6 +231,7 @@ async function main() {
             priceMin: t.min,
             priceMax: t.max,
             rate: chance(0.25) ? Math.min(30, rate + int(1, 6)) : null,
+            level: chance(0.6) ? int(1, 4) : null,
           })),
         },
       },

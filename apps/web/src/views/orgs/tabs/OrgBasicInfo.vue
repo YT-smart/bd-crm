@@ -34,8 +34,8 @@ const emit = defineEmits<{ edit: [] }>();
         <span class="kv-value"><CopyText :value="org.city" label="总部城市" /></span>
       </div>
       <div class="kv-row">
-        <span class="kv-label">办公城市</span>
-        <span class="kv-value"><CopyText :value="org.officeCities.join('、')" label="办公城市" /></span>
+        <span class="kv-label">校区城市</span>
+        <span class="kv-value"><CopyText :value="org.officeCities.join('、')" label="校区城市" /></span>
       </div>
       <div class="kv-row">
         <span class="kv-label">覆盖国家/地区</span>
@@ -72,8 +72,8 @@ const emit = defineEmits<{ edit: [] }>();
         <span class="kv-value pre"><CopyText :value="org.intro" label="机构简介" /></span>
       </div>
       <div class="kv-row">
-        <span class="kv-label">机构优势</span>
-        <span class="kv-value"><CopyText :value="org.advantage" label="机构优势" /></span>
+        <span class="kv-label">机构一句话优势</span>
+        <span class="kv-value"><CopyText :value="org.advantage" label="机构一句话优势" /></span>
       </div>
       <div v-if="internal" class="kv-row">
         <span class="kv-label">负责人</span>

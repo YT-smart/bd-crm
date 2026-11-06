@@ -7,6 +7,11 @@ import {
   type DashboardRange,
   type DashboardSummary,
   type DealBrief,
+  type MapAreaStat,
+  type MapCityStat,
+  type MapSearchQuery,
+  type MapSearchResult,
+  PROVINCE_OF_CITY,
   type MetricWithDelta,
   type MyOrgDashboard,
   type ProvinceStat,
@@ -196,6 +201,53 @@ export async function getDistribution(range: DashboardRange): Promise<DashboardD
       amount: t.amount,
       commission: t.commission,
     })),
+  };
+}
+
+/* ---------------- 地图筛选 ---------------- */
+
+const MAP_ORG_NAMES = 8;
+
+export async function searchMap(q: MapSearchQuery): Promise<MapSearchResult> {
+  const where: Prisma.OrgWhereInput = { deletedAt: null };
+  if (q.keyword) where.name = { contains: q.keyword, mode: 'insensitive' };
+  // 业务类型：机构开展的业务，或机构任一产品属于该类型
+  if (q.businessType) {
+    where.OR = [{ businessTypes: { has: q.businessType } }, { products: { some: { type: q.businessType } } }];
+  }
+  const orgs = await prisma.org.findMany({
+    where,
+    select: { id: true, name: true, city: true, officeCities: true },
+    orderBy: { name: 'asc' },
+  });
+
+  const cityMap = new Map<string, MapCityStat>();
+  const provMap = new Map<string, MapAreaStat>();
+  const add = <T extends MapAreaStat>(m: Map<string, T>, key: string, init: () => T, orgName: string) => {
+    const v = m.get(key) ?? init();
+    v.count += 1;
+    if (v.orgs.length < MAP_ORG_NAMES) v.orgs.push(orgName);
+    m.set(key, v);
+  };
+
+  const list = orgs.map((o) => {
+    // 校区城市（含总部城市），去重
+    const cities = [...new Set([o.city, ...o.officeCities].filter((c): c is string => !!c && !!PROVINCE_OF_CITY[c]))];
+    const provinces = new Set<string>();
+    for (const c of cities) {
+      const p = PROVINCE_OF_CITY[c];
+      provinces.add(p);
+      add(cityMap, c, () => ({ name: c, province: p, count: 0, orgs: [] }), o.name);
+    }
+    for (const p of provinces) add(provMap, p, () => ({ name: p, count: 0, orgs: [] }), o.name);
+    return { id: o.id, name: o.name, cities };
+  });
+
+  return {
+    orgCount: orgs.length,
+    orgs: list.slice(0, 20),
+    provinces: [...provMap.values()].sort((a, b) => b.count - a.count),
+    cities: [...cityMap.values()].sort((a, b) => b.count - a.count),
   };
 }
 

@@ -68,6 +68,7 @@ model User {
   auditedDeals  Deal[]         @relation("DealAuditor")
   settledDeals  Deal[]         @relation("DealSettler")
   followUps     FollowUp[]
+  orgReviews    OrgReview[]
   notifications Notification[]
   loginLogs     LoginLog[]
   attachments   Attachment[]
@@ -132,6 +133,7 @@ model Org {
   settlements Settlement[]
   attachments Attachment[]
   followUps   FollowUp[]
+  reviews     OrgReview[]
 
   @@index([status])
   @@index([province])
@@ -163,6 +165,7 @@ model OrgProduct {
   priceMin  Decimal? @db.Decimal(12, 2)
   priceMax  Decimal? @db.Decimal(12, 2)
   rate      Decimal? @db.Decimal(5, 2) // 单独佣金比例（%），为空则使用机构默认值
+  level     Int? // 推荐级别 1-4，1 为主推；用于产品排序
   note      String?
   createdAt DateTime @default(now())
 
@@ -247,6 +250,19 @@ model Attachment {
 
   @@index([orgId])
   @@index([dealId])
+}
+
+/// 机构评价：员工、管理员内部填写，机构账号不可见
+model OrgReview {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
 }
 
 model FollowUp {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, useMessage, useDialog } from 'naive-ui';
 import { Plus } from 'lucide-vue-next';
 import OrgCard from '../OrgCard.vue';
-import { BUSINESS_TYPES, type OrgProductItem, type ProductInput } from '@bdcrm/shared';
+import { BUSINESS_TYPES, BUSINESS_TYPE_MAX_LEN, PRODUCT_LEVELS, PRODUCT_LEVEL_LABEL, type OrgProductItem, type ProductInput } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { money } from '@/utils/format';
@@ -26,7 +26,18 @@ const showForm = ref(false);
 const editing = ref<OrgProductItem | null>(null);
 const saving = ref(false);
 
-const typeOptions = BUSINESS_TYPES.map((t) => ({ label: t, value: t }));
+/** 选「其他」时显示输入框，填写自定义类型 */
+const OTHER = '__other__';
+const customType = ref('');
+/** 常用类型 + 本机构已用过的自定义类型 + 其他（自定义） */
+const typeOptions = computed(() => [
+  ...[...new Set([...BUSINESS_TYPES, ...props.products.map((p) => p.type), form.type].filter((t) => t && t !== OTHER))].map((t) => ({
+    label: t,
+    value: t,
+  })),
+  { label: '其他（自定义）', value: OTHER },
+]);
+const levelOptions = PRODUCT_LEVELS.map((l) => ({ label: PRODUCT_LEVEL_LABEL[l], value: l }));
 
 const form = reactive<ProductInput>({
   name: '',
@@ -34,12 +45,14 @@ const form = reactive<ProductInput>({
   priceMin: null,
   priceMax: null,
   rate: null,
+  level: null,
   note: '',
 });
 
 function openAdd() {
   editing.value = null;
-  Object.assign(form, { name: '', type: BUSINESS_TYPES[0], priceMin: null, priceMax: null, rate: null, note: '' });
+  Object.assign(form, { name: '', type: BUSINESS_TYPES[0], priceMin: null, priceMax: null, rate: null, level: null, note: '' });
+  customType.value = '';
   showForm.value = true;
 }
 
@@ -51,20 +64,26 @@ function openEdit(p: OrgProductItem) {
     priceMin: p.priceMin,
     priceMax: p.priceMax,
     rate: p.rate,
+    level: p.level,
     note: p.note ?? '',
   });
+  customType.value = '';
   showForm.value = true;
 }
 
 async function save() {
   if (!form.name.trim()) { message.warning('产品名称不能为空'); return; }
+  const type = (form.type === OTHER ? customType.value : form.type ?? '').trim();
+  if (!type) { message.warning(form.type === OTHER ? '请填写自定义的业务类型' : '请选择业务类型'); return; }
+  if (type.length > BUSINESS_TYPE_MAX_LEN) { message.warning(`业务类型请控制在 ${BUSINESS_TYPE_MAX_LEN} 字以内`); return; }
+  const payload = { ...form, type };
   saving.value = true;
   try {
     if (editing.value) {
-      await orgApi.updateProduct(props.orgId, editing.value.id, form);
+      await orgApi.updateProduct(props.orgId, editing.value.id, payload);
       message.success('产品已更新');
     } else {
-      await orgApi.addProduct(props.orgId, form);
+      await orgApi.addProduct(props.orgId, payload);
       message.success('产品已添加');
     }
     showForm.value = false;
@@ -107,6 +126,7 @@ function handleDelete(p: OrgProductItem) {
       <table class="tbl">
         <thead>
           <tr>
+            <th>推荐</th>
             <th>产品名称</th>
             <th>类型</th>
             <th>报价</th>
@@ -117,8 +137,14 @@ function handleDelete(p: OrgProductItem) {
         </thead>
         <tbody>
           <tr v-for="p in products" :key="p.id">
+            <td class="nowrap">
+              <span v-if="p.level" :class="['plevel', `plevel-${p.level}`]" :title="PRODUCT_LEVEL_LABEL[p.level]">
+                {{ p.level === 1 ? '主推' : `${p.level} 级` }}
+              </span>
+              <span v-else class="text-3">-</span>
+            </td>
             <td class="strong">{{ p.name }}</td>
-            <td>{{ p.type }}</td>
+            <td class="nowrap">{{ p.type }}</td>
             <td class="num nowrap">{{ priceText(p) }}</td>
             <td class="num nowrap">
               <span :class="{ rate: p.rate != null }">{{ p.rate ?? defaultRate }}%</span>
@@ -134,12 +160,35 @@ function handleDelete(p: OrgProductItem) {
     </div>
 
     <NModal v-model:show="showForm" preset="card" :title="editing ? '编辑产品' : '添加产品'" style="max-width: 520px">
-      <NForm label-placement="left" label-width="80" :show-feedback="false">
+      <NForm label-placement="left" label-width="96" :show-feedback="false">
         <NFormItem label="产品名称" required>
           <NInput v-model:value="form.name" placeholder="产品名称" maxlength="100" />
         </NFormItem>
         <NFormItem label="业务类型" required>
-          <NSelect v-model:value="form.type" :options="typeOptions" />
+          <NSelect
+            id="product-type"
+            v-model:value="form.type"
+            :options="typeOptions"
+            placeholder="选择业务类型"
+          />
+        </NFormItem>
+        <NFormItem v-if="form.type === OTHER" label="自定义类型" required>
+          <NInput
+            id="product-custom-type"
+            v-model:value="customType"
+            :maxlength="BUSINESS_TYPE_MAX_LEN"
+            placeholder="填写业务类型，如：夏令营、艺术留学"
+          />
+        </NFormItem>
+        <NFormItem label="推荐级别">
+          <NSelect
+            id="product-level"
+            v-model:value="form.level"
+            :options="levelOptions"
+            clearable
+            placeholder="1 级为主推，产品按级别排序"
+            style="width: 240px"
+          />
         </NFormItem>
         <div style="display: flex; gap: 16px">
           <NFormItem label="最低报价" style="flex: 1">
@@ -210,6 +259,18 @@ function handleDelete(p: OrgProductItem) {
 .nowrap { white-space: nowrap; }
 .note { color: var(--text-2); min-width: 140px; }
 .rate { color: var(--brand); font-weight: 600; }
+.plevel {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--neutral-soft);
+  color: var(--text-2);
+}
+.plevel-1 { background: var(--danger-soft, #fde8e8); color: var(--danger); font-weight: 600; }
+.plevel-2 { background: var(--warning-soft, #fff3e0); color: var(--warning); }
+.plevel-3 { background: var(--info-soft); color: var(--info); }
 .op { width: 100px; white-space: nowrap; text-align: right; }
 .link-op {
   padding: 0;
