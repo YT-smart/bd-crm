@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 筛选面板的一行：「不限」+ 选项按钮，可多选；点「不限」清空。
+ * 筛选面板的一行：「不限」+ 选项按钮，可多选（single 时只能选一个）；点「不限」清空。
+ * 默认插槽放在按钮后面，比如「更多城市」下拉。
  */
 export interface FilterOption {
   label: string;
@@ -8,11 +9,12 @@ export interface FilterOption {
   count?: number;
 }
 
-const props = defineProps<{ label: string; options: readonly FilterOption[] }>();
+const props = defineProps<{ label: string; options: readonly FilterOption[]; single?: boolean }>();
 const model = defineModel<string[]>({ required: true });
 
 function toggle(v: string) {
-  model.value = model.value.includes(v) ? model.value.filter((x) => x !== v) : [...model.value, v];
+  if (model.value.includes(v)) model.value = model.value.filter((x) => x !== v);
+  else model.value = props.single ? [v] : [...model.value, v];
 }
 </script>
 

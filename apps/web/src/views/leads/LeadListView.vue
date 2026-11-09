@@ -15,7 +15,7 @@ import { leadApi, orgApi, type LeadFilterOptions } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { date } from '@/utils/format';
-import FilterRow, { type FilterOption } from './FilterRow.vue';
+import FilterRow, { type FilterOption } from '@/components/FilterRow.vue';
 import LeadFormModal from './LeadFormModal.vue';
 import LeadDrawer from './LeadDrawer.vue';
 import { intentionPill, pushPill } from './leadStyle';

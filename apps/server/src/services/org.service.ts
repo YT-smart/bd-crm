@@ -55,6 +55,33 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
   return where;
 }
 
+/** 筛选面板里平铺显示的城市 / 国家：至少这么多家机构填了才出现 */
+export const ORG_FACET_MIN = 5;
+
+/**
+ * 机构筛选面板的常用项：按录入的机构动态统计。
+ * 城市算总部城市 + 校区城市（同一家机构只算一次），国家算覆盖国家。
+ */
+export async function orgFilterFacets() {
+  const orgs = await prisma.org.findMany({
+    where: { deletedAt: null },
+    select: { city: true, officeCities: true, countries: true },
+  });
+  const cities = new Map<string, number>();
+  const countries = new Map<string, number>();
+  const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+  for (const o of orgs) {
+    for (const c of new Set([o.city, ...o.officeCities].filter((c): c is string => !!c))) bump(cities, c);
+    for (const c of new Set(o.countries)) bump(countries, c);
+  }
+  const top = (m: Map<string, number>) =>
+    [...m.entries()]
+      .filter(([, n]) => n >= ORG_FACET_MIN)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'))
+      .map(([name, count]) => ({ name, count }));
+  return { min: ORG_FACET_MIN, cities: top(cities), countries: top(countries) };
+}
+
 /**
  * 机构列表（搜索 + 省份 / 状态 / 等级筛选 + 分页 + 排序）。
  */

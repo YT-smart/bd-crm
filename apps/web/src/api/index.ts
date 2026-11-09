@@ -60,10 +60,18 @@ export const dashboardApi = {
   my: () => http.get<MyOrgDashboard>('/dashboard/my'),
 };
 
+/** 机构筛选面板的常用城市 / 国家（至少 min 家机构） */
+export interface OrgFilterFacets {
+  min: number;
+  cities: { name: string; count: number }[];
+  countries: { name: string; count: number }[];
+}
+
 export const orgApi = {
   /* 列表 */
   list: (q: OrgListQuery) => http.get<PageResult<OrgListItem>>('/orgs', { ...q }),
   staffOptions: () => http.get<StaffOption[]>('/orgs/staff-options'),
+  filterFacets: () => http.get<OrgFilterFacets>('/orgs/filter-facets'),
   exportData: (q: OrgListQuery) => http.get<Record<string, unknown>[]>('/orgs/export', { ...q }),
 
   /* CRUD */

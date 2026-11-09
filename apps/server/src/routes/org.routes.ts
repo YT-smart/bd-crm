@@ -48,6 +48,7 @@ import {
   exportOrgs,
   setWechatQr,
   getWechatQrKey,
+  orgFilterFacets,
 } from '../services/org.service';
 
 const router = Router();
@@ -96,6 +97,12 @@ router.get('/', requirePerm(PERM.ORG_VIEW), async (req, res) => {
     data.list = data.list.map((o) => ({ ...o, defaultRate: 0, dealAmount: 0, commission: 0 }));
   }
   ok(res, data);
+});
+
+/* ============ 筛选面板常用城市 / 国家 ============ */
+
+router.get('/filter-facets', requirePerm(PERM.ORG_VIEW), async (_req, res) => {
+  ok(res, await orgFilterFacets());
 });
 
 /* ============ 员工选项（负责BD下拉） ============ */

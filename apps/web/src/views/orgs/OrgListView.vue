@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, reactive, ref, watch } from 'vue';
+import { computed, h, reactive, ref, watch, type WritableComputedRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NDataTable, NInput, NSelect, useMessage, type DataTableColumns, type DataTableSortState, type SelectGroupOption } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
@@ -21,7 +21,8 @@ import {
   type OrgListQuery,
   type OrgStatus,
 } from '@bdcrm/shared';
-import { orgApi } from '@/api';
+import { orgApi, type OrgFilterFacets } from '@/api';
+import FilterRow, { type FilterOption } from '@/components/FilterRow.vue';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import StatusTag from '@/components/StatusTag.vue';
@@ -84,7 +85,44 @@ const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
   children: g.items.map((c) => ({ label: c, value: c })),
 }));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.city || filters.businessType || filters.status || filters.level || filters.country));
+/* ---------- 筛选面板：单选的按钮行，和 filters 里的单值互转 ---------- */
+type SingleKey = 'city' | 'country' | 'businessType' | 'status' | 'level';
+const rowModel = (k: SingleKey): WritableComputedRef<string[]> =>
+  computed({
+    get: () => (filters[k] ? [filters[k] as string] : []),
+    set: (v) => {
+      (filters as Record<SingleKey, string | null>)[k] = v[0] ?? null;
+    },
+  });
+const cityRow = rowModel('city');
+const countryRow = rowModel('country');
+const businessRow = rowModel('businessType');
+const statusRow = rowModel('status');
+const levelRow = rowModel('level');
+
+/** 城市 / 国家：只平铺至少 N 家机构填了的，随录入的机构自动变化；其他的从「更多」里选 */
+const facets = ref<OrgFilterFacets | null>(null);
+orgApi.filterFacets().then((f) => (facets.value = f)).catch(() => {});
+
+function facetOptions(list: { name: string; count: number }[] | undefined, current: string | null): FilterOption[] {
+  const opts: FilterOption[] = (list ?? []).map((c) => ({ label: c.name, value: c.name, count: c.count }));
+  // 从「更多」或地图选的不在常用里，也显示成选中的按钮
+  if (current && !opts.some((o) => o.value === current)) opts.unshift({ label: current, value: current });
+  return opts;
+}
+const cityFacetOptions = computed(() => facetOptions(facets.value?.cities, filters.city));
+const countryFacetOptions = computed(() => facetOptions(facets.value?.countries, filters.country));
+const facetTip = computed(() => `至少 ${facets.value?.min ?? 5} 家机构填了的会显示在这里`);
+
+const businessRowOptions = computed<FilterOption[]>(() => {
+  const opts: FilterOption[] = businessTypeOptions.map((o) => ({ ...o }));
+  if (filters.businessType && !opts.some((o) => o.value === filters.businessType)) {
+    opts.push({ label: filters.businessType, value: filters.businessType });
+  }
+  return opts;
+});
+
+const activeCount = computed(() => [filters.province, filters.city, filters.businessType, filters.status, filters.level, filters.country].filter(Boolean).length);
 const canCreate = computed(() => auth.can('org:create'));
 const canExport = computed(() => auth.can('org:export'));
 const canSeeMoney = auth.can(PERM.ORG_COOPERATION);
@@ -170,8 +208,9 @@ watch(
 
 load();
 
-function reset() {
-  Object.assign(filters, { keyword: '', province: null, city: null, businessType: null, status: null, level: null, country: null, page: 1 });
+/** 清空筛选，搜索词保留 */
+function resetFilters() {
+  Object.assign(filters, { province: null, city: null, businessType: null, status: null, level: null, country: null, page: 1 });
 }
 
 function onPage(p: number) {
@@ -363,44 +402,60 @@ const pagination = computed(() => ({
 
 <template>
   <div class="page">
-    <div class="card toolbar rise-in">
+    <!-- 筛选面板 -->
+    <div class="card filter-card rise-in">
+      <FilterRow v-model="cityRow" label="城市" :options="cityFacetOptions" single>
+        <NSelect
+          id="org-filter-city"
+          :value="null"
+          :options="cityOptions"
+          placeholder="更多城市"
+          filterable
+          size="small"
+          class="more-sel"
+          @update:value="(v: string | null) => v && (filters.city = v)"
+        />
+        <span v-if="facets && !facets.cities.length" class="facet-tip text-3">{{ facetTip }}</span>
+      </FilterRow>
+      <FilterRow v-model="countryRow" label="覆盖国家" :options="countryFacetOptions" single>
+        <NSelect
+          id="org-filter-country"
+          :value="null"
+          :options="countryOptions"
+          placeholder="更多国家/地区"
+          filterable
+          size="small"
+          class="more-sel"
+          @update:value="(v: string | null) => v && (filters.country = v)"
+        />
+        <span v-if="facets && !facets.countries.length" class="facet-tip text-3">{{ facetTip }}</span>
+      </FilterRow>
+      <FilterRow v-model="businessRow" label="业务类型" :options="businessRowOptions" single>
+        <NSelect
+          id="org-filter-business"
+          :value="null"
+          :options="[]"
+          placeholder="输入其他类型"
+          filterable
+          tag
+          size="small"
+          class="more-sel"
+          @update:value="(v: string | null) => v && (filters.businessType = v.trim().slice(0, BUSINESS_TYPE_MAX_LEN) || null)"
+        />
+      </FilterRow>
+      <FilterRow v-model="statusRow" label="合作状态" :options="statusOptions" single />
+      <FilterRow v-model="levelRow" label="机构等级" :options="levelOptions" single />
+      <div v-if="activeCount" class="filter-foot">
+        <button id="org-filter-reset" class="link-btn" @click="resetFilters">
+          <RotateCcw :size="13" /> 清空筛选（{{ activeCount }}）
+        </button>
+      </div>
+    </div>
+
+    <div class="card toolbar rise-in" style="animation-delay: 40ms">
       <NInput id="org-search" v-model:value="filters.keyword" placeholder="搜索机构名称、城市（含校区城市）、联系人、电话" clearable class="search">
         <template #prefix><Search :size="16" :stroke-width="1.75" class="text-3" /></template>
       </NInput>
-      <NSelect
-        id="org-filter-city"
-        v-model:value="filters.city"
-        :options="cityOptions"
-        placeholder="城市"
-        clearable
-        filterable
-        class="sel"
-      />
-      <NSelect
-        id="org-filter-business"
-        v-model:value="filters.businessType"
-        :options="businessTypeOptions"
-        placeholder="业务类型"
-        clearable
-        filterable
-        tag
-        class="sel sm"
-      />
-      <NSelect
-        id="org-filter-country"
-        v-model:value="filters.country"
-        :options="countryOptions"
-        placeholder="覆盖国家/地区"
-        clearable
-        filterable
-        class="sel"
-      />
-      <NSelect id="org-filter-status" v-model:value="filters.status" :options="statusOptions" placeholder="合作状态" clearable class="sel" />
-      <NSelect id="org-filter-level" v-model:value="filters.level" :options="levelOptions" placeholder="机构等级" clearable class="sel sm" />
-      <button v-if="hasFilter" id="org-filter-reset" class="link-btn reset" @click="reset">
-        <RotateCcw :size="14" /> 重置
-      </button>
-
       <div class="toolbar-right">
         <button v-if="canExport" class="btn btn-ghost btn-sm" @click="handleExport">
           <Download :size="14" /> 导出
@@ -443,7 +498,29 @@ const pagination = computed(() => ({
 </template>
 
 <style scoped>
+.filter-card {
+  padding: 4px 16px;
+}
+.more-sel {
+  width: 150px;
+}
+.facet-tip {
+  align-self: center;
+  font-size: 12px;
+}
+.filter-foot {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+.filter-foot .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+}
 .toolbar {
+  margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -460,9 +537,6 @@ const pagination = computed(() => ({
 }
 .sel.sm {
   width: 130px;
-}
-.reset {
-  margin-left: 4px;
 }
 .toolbar-right {
   margin-left: auto;
