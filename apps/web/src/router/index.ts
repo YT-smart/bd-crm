@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '我的机构', perm: PERM.MY_ORG },
       },
       {
+        path: 'leads',
+        name: 'leads',
+        component: () => import('@/views/leads/LeadListView.vue'),
+        meta: { title: '客户线索', perm: PERM.LEAD_VIEW },
+      },
+      {
         path: 'deals',
         name: 'deals',
         component: () => import('@/views/deals/DealListView.vue'),

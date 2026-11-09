@@ -538,3 +538,103 @@ export interface OrgOption {
   products: Array<{ id: string; name: string; type: string; rate: number | null }>;
 }
 
+
+/* ============ 客户线索 ============ */
+
+export interface LeadListQuery {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+  /** 以下多选项都用英文逗号拼接 */
+  pushStatus?: string;
+  productTags?: string;
+  grades?: string;
+  degrees?: string;
+  wechatStatus?: string;
+  regions?: string;
+  intentions?: string;
+  assigneeIds?: string;
+  creatorIds?: string;
+  source?: string;
+  orgId?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+  assignedFrom?: string;
+  assignedTo?: string;
+  sort?: 'createdAt' | 'updatedAt' | 'assignedAt';
+  order?: 'asc' | 'desc';
+}
+
+export interface LeadListItem {
+  id: string;
+  studentName: string;
+  phone: string | null;
+  wechat: string | null;
+  source: string | null;
+  productTags: string[];
+  grade: string | null;
+  degree: string | null;
+  regions: string[];
+  wechatStatus: string | null;
+  intention: string | null;
+  pushStatus: string;
+  orgId: string | null;
+  orgName: string | null;
+  pushedAt: string | null;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  assignedAt: string | null;
+  createdById: string;
+  createdByName: string;
+  dealId: string | null;
+  note: string | null;
+  lastFollowAt: string | null;
+  followCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadFollowItem {
+  id: string;
+  method: string;
+  content: string;
+  userName: string;
+  createdAt: string;
+}
+
+export interface LeadDetail extends LeadListItem {
+  follows: LeadFollowItem[];
+}
+
+export interface LeadInput {
+  studentName: string;
+  phone?: string | null;
+  wechat?: string | null;
+  source?: string | null;
+  productTags?: string[];
+  grade?: string | null;
+  degree?: string | null;
+  regions?: string[];
+  wechatStatus?: string | null;
+  intention?: string | null;
+  pushStatus?: string;
+  orgId?: string | null;
+  assigneeId?: string | null;
+  note?: string | null;
+}
+
+/** 推出状态各自的数量（页签 / 筛选项上显示） */
+export type LeadStatusCounts = Record<string, number> & { total: number };
+
+/** 登记签约：生成一条待审核的成交 */
+export interface LeadSignInput {
+  orgId: string;
+  productId?: string | null;
+  dealAt: string;
+  amount: number;
+  rate: number;
+  commission: number;
+  note?: string | null;
+}

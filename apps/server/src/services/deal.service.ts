@@ -18,11 +18,25 @@ const num = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v)
 const APPROVED: readonly DealStatus[] = APPROVED_DEAL_STATUSES;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** 列表 / 导出共用的筛选条件。scopeOrgId 优先级最高，机构账号传入的 orgId 不能覆盖它。 */
-function buildDealWhere(q: DealListQuery, scopeOrgId?: string): Prisma.DealWhereInput {
-  const where: Prisma.DealWhereInput = {};
-  if (scopeOrgId) where.orgId = scopeOrgId;
-  else if (q.orgId) where.orgId = q.orgId;
+/**
+ * 数据范围：机构账号只看本机构；员工只看自己录入的成交；管理员看全部。
+ * 由路由层根据登录身份生成，前端传的参数不能放宽它。
+ */
+export interface DealScope {
+  orgId?: string;
+  userId?: string;
+}
+
+export function scopeWhere(scope: DealScope = {}): Prisma.DealWhereInput {
+  if (scope.orgId) return { orgId: scope.orgId };
+  if (scope.userId) return { createdById: scope.userId };
+  return {};
+}
+
+/** 列表 / 导出共用的筛选条件 */
+function buildDealWhere(q: DealListQuery, scope: DealScope = {}): Prisma.DealWhereInput {
+  const where: Prisma.DealWhereInput = { AND: [scopeWhere(scope)] };
+  if (!scope.orgId && q.orgId) where.orgId = q.orgId;
   if (q.status) where.status = q.status;
   const range = dayRange(q.startDate, q.endDate);
   if (range) where.dealAt = range;
@@ -40,10 +54,9 @@ function buildDealWhere(q: DealListQuery, scopeOrgId?: string): Prisma.DealWhere
 
 export async function listDeals(
   q: Required<Pick<DealListQuery, 'page' | 'pageSize'>> & DealListQuery,
-  /** 机构角色只能看自己的 */
-  scopeOrgId?: string,
+  scope: DealScope = {},
 ): Promise<PageResult<DealListItem>> {
-  const where = buildDealWhere(q, scopeOrgId);
+  const where = buildDealWhere(q, scope);
 
   const orderBy: Prisma.DealOrderByWithRelationInput = {
     [q.sort ?? 'createdAt']: q.order ?? 'desc',
@@ -97,8 +110,8 @@ export async function listDeals(
 
 /* ============ 统计概览 ============ */
 
-export async function getDealSummary(scopeOrgId?: string): Promise<DealSummary> {
-  const where: Prisma.DealWhereInput = scopeOrgId ? { orgId: scopeOrgId } : {};
+export async function getDealSummary(scope: DealScope = {}): Promise<DealSummary> {
+  const where = scopeWhere(scope);
   const groups = await prisma.deal.groupBy({
     by: ['status'],
     where,
@@ -480,9 +493,9 @@ export async function listOrgOptions(scopeOrgId?: string): Promise<OrgOption[]> 
 
 /* ============ 导出成交数据 ============ */
 
-export async function exportDeals(q: DealListQuery, scopeOrgId?: string) {
+export async function exportDeals(q: DealListQuery, scope: DealScope = {}) {
   return prisma.deal.findMany({
-    where: buildDealWhere(q, scopeOrgId),
+    where: buildDealWhere(q, scope),
     orderBy: { [q.sort ?? 'dealAt']: q.order ?? 'desc' },
     include: {
       org: { select: { name: true } },

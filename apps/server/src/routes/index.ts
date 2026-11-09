@@ -4,6 +4,7 @@ import authRoutes from './auth.routes';
 import dashboardRoutes from './dashboard.routes';
 import orgRoutes from './org.routes';
 import dealRoutes from './deal.routes';
+import leadRoutes from './lead.routes';
 import logRoutes from './log.routes';
 import userRoutes from './user.routes';
 import shareRoutes from './share.routes';
@@ -23,6 +24,7 @@ router.use(requireAuth, requirePasswordReady);
 router.use('/dashboard', dashboardRoutes);
 router.use('/orgs', orgRoutes);
 router.use('/deals', dealRoutes);
+router.use('/leads', leadRoutes);
 router.use('/logs', logRoutes);
 router.use('/users', userRoutes);
 

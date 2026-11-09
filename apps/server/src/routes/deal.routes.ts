@@ -17,15 +17,24 @@ import {
   revokeSettle,
   listOrgOptions,
   exportDeals,
+  type DealScope,
 } from '../services/deal.service';
+import type { Request } from 'express';
 
 const router = Router();
+
+/** 当前账号能看到的成交范围 */
+function dealScope(req: Request): DealScope {
+  const u = req.user!;
+  if (u.role === 'ORG') return { orgId: u.orgId! };
+  if (!u.permissions.includes(PERM.DEAL_VIEW_ALL)) return { userId: u.id };
+  return {};
+}
 
 /* ============ 统计概览 ============ */
 
 router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
-  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
-  ok(res, await getDealSummary(scopeOrgId));
+  ok(res, await getDealSummary(dealScope(req)));
 });
 
 /* 成交概览：成交额、佣金、成交率等经营数据，仅管理员 */
@@ -57,8 +66,7 @@ const querySchema = z.object({
 
 router.get('/export', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
   const q = querySchema.parse(req.query);
-  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
-  const rows = await exportDeals(q, scopeOrgId);
+  const rows = await exportDeals(q, dealScope(req));
 
   const data = rows.map((d) => ({
     orgName: d.org.name,
@@ -81,8 +89,7 @@ router.get('/export', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
 
 router.get('/', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
   const q = querySchema.parse(req.query);
-  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
-  ok(res, await listDeals(q, scopeOrgId));
+  ok(res, await listDeals(q, dealScope(req)));
 });
 
 /* ============ 录入成交 ============ */

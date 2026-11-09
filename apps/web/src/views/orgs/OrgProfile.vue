@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { NDrawer, NDrawerContent } from 'naive-ui';
 import type { OrgDetail } from '@bdcrm/shared';
 import OrgBasicInfo from './tabs/OrgBasicInfo.vue';
@@ -19,7 +19,7 @@ import { useAuthStore } from '@/stores/auth';
  * 机构完整资料：卡片式分块，左侧主信息、右侧联系方式与合作数据，所有信息一屏内纵向浏览。
  * 合作信息、跟进记录、标签属于内部字段，机构账号不展示。
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{ org: OrgDetail; canEdit?: boolean; internal?: boolean }>(),
   { canEdit: true, internal: true },
 );
@@ -27,6 +27,8 @@ const emit = defineEmits<{ refresh: [] }>();
 const auth = useAuthStore();
 /** 合作信息（结算、合同、收款账户）只给管理员看；评价员工和管理员都能看能写 */
 const canSeeCooperation = auth.can(PERM.ORG_COOPERATION);
+/** 跟钱有关的（佣金比例、成交记录、合作数据）：管理员；机构账号看自己的 */
+const canSeeMoney = computed(() => !props.internal || canSeeCooperation);
 const canReview = auth.can(PERM.ORG_REVIEW);
 
 const showEdit = ref(false);
@@ -53,15 +55,16 @@ defineExpose({ openEdit });
 <template>
   <div class="profile">
     <div class="col-main">
-      <OrgBasicInfo :org="org" :can-edit="canEdit" :internal="internal" @edit="openEdit" />
+      <OrgBasicInfo :org="org" :can-edit="canEdit" :internal="internal" :show-rate="canSeeMoney" @edit="openEdit" />
       <OrgProductsTab
         :org-id="org.id"
         :products="org.products"
         :default-rate="org.defaultRate"
+        :show-rate="canSeeMoney"
         :can-edit="canEdit"
         @refresh="emit('refresh')"
       />
-      <OrgDealsTab :org-id="org.id" />
+      <OrgDealsTab v-if="canSeeMoney" :org-id="org.id" />
       <OrgAttachmentsTab :org-id="org.id" :can-edit="canEdit" />
     </div>
 
@@ -76,7 +79,7 @@ defineExpose({ openEdit });
         :has-wechat-qr="org.hasWechatQr"
         @refresh="emit('refresh')"
       />
-      <OrgStatsCard :stats="org.stats" />
+      <OrgStatsCard v-if="canSeeMoney" :stats="org.stats" />
       <OrgReviewsCard v-if="internal && canReview" :org-id="org.id" />
       <OrgCooperationTab v-if="internal && canSeeCooperation" :org="org" :can-edit="canEdit" @updated="emit('refresh')" />
       <OrgFollowUpsTab v-if="internal" :org-id="org.id" :can-edit="canEdit" />

@@ -84,8 +84,18 @@ const listSchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
 });
 
+/** 是否能看机构里跟钱有关的信息（佣金比例、成交额、佣金、合作信息）：管理员；机构账号看自己的 */
+const canSeeOrgMoney = (req: Request) => req.user!.role === 'ORG' || req.user!.permissions.includes(PERM.ORG_COOPERATION);
+
 router.get('/', requirePerm(PERM.ORG_VIEW), async (req, res) => {
-  ok(res, await listOrgs(listSchema.parse(req.query)));
+  const q = listSchema.parse(req.query);
+  // 员工不能按佣金排序（不然能从排序推出佣金高低）
+  if (!canSeeOrgMoney(req) && q.sort === 'defaultRate') q.sort = undefined;
+  const data = await listOrgs(q);
+  if (!canSeeOrgMoney(req)) {
+    data.list = data.list.map((o) => ({ ...o, defaultRate: 0, dealAmount: 0, commission: 0 }));
+  }
+  ok(res, data);
 });
 
 /* ============ 员工选项（负责BD下拉） ============ */
@@ -100,7 +110,7 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
   const q = listSchema.parse(req.query);
   const rows = await exportOrgs(q);
   // 返回 JSON 数据，前端使用 SheetJS 生成 xlsx
-  // 结算周期属于合作信息，只有管理员导出时才带上
+  // 佣金比例、结算周期跟钱有关，只有管理员导出时才带上
   const withCooperation = req.user!.permissions.includes(PERM.ORG_COOPERATION);
   // 直接用中文列名，前端 SheetJS 生成 xlsx 时作为表头
   const data = rows.map((o) => ({
@@ -111,7 +121,7 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
     覆盖国家和地区: o.countries.join('、'),
     合作状态: ORG_STATUS_LABEL[o.status] ?? o.status,
     等级: o.level ?? '',
-    '默认佣金(%)': Number(o.defaultRate),
+    ...(withCooperation ? { '默认佣金(%)': Number(o.defaultRate) } : {}),
     业务类型: o.businessTypes.join('、'),
     ...(withCooperation ? { 结算周期: o.settleCycle ? SETTLE_CYCLE_LABEL[o.settleCycle] : '' } : {}),
     联系人: o.contacts[0]?.name ?? '',
@@ -126,10 +136,17 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
 
 router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
   const detail = await getOrgDetail(req.params.id);
-  // 合作信息（结算周期、合同期限、收款账户）只给管理员；机构账号仍可看自己的
-  const u = req.user!;
-  if (u.role !== 'ORG' && !u.permissions.includes(PERM.ORG_COOPERATION)) {
-    Object.assign(detail, { settleCycle: null, bankInfo: null, contractStart: null, contractEnd: null });
+  // 跟钱有关的（合作信息、佣金比例、合作数据）只给管理员；机构账号仍可看自己的
+  if (!canSeeOrgMoney(req)) {
+    Object.assign(detail, {
+      settleCycle: null,
+      bankInfo: null,
+      contractStart: null,
+      contractEnd: null,
+      defaultRate: 0,
+      products: detail.products.map((p) => ({ ...p, rate: null })),
+      stats: { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0, pendingAudit: 0 },
+    });
   }
   ok(res, detail);
 });

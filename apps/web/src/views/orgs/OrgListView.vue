@@ -16,6 +16,7 @@ import {
   isCity,
   isProvince,
   shortProvinceName,
+  PERM,
   type OrgListItem,
   type OrgListQuery,
   type OrgStatus,
@@ -86,6 +87,7 @@ const countryOptions: SelectGroupOption[] = COUNTRY_GROUPS.map((g) => ({
 const hasFilter = computed(() => !!(filters.keyword || filters.province || filters.city || filters.businessType || filters.status || filters.level || filters.country));
 const canCreate = computed(() => auth.can('org:create'));
 const canExport = computed(() => auth.can('org:export'));
+const canSeeMoney = auth.can(PERM.ORG_COOPERATION);
 
 function syncUrl() {
   router.replace({
@@ -300,15 +302,20 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
     sortOrder: sort.value?.key === 'level' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
     render: (r) => (r.level ? h('span', { class: `level level-${r.level}` }, r.level) : '--'),
   },
-  {
-    title: '默认佣金',
-    key: 'defaultRate',
-    minWidth: 110,
-    align: 'center',
-    sorter: true,
-    sortOrder: sort.value?.key === 'defaultRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
-    render: (r) => h('span', { class: 'num' }, `${r.defaultRate.toFixed(1)}%`),
-  },
+  // 佣金比例只给管理员看
+  ...(canSeeMoney
+    ? [
+        {
+          title: '默认佣金',
+          key: 'defaultRate',
+          minWidth: 110,
+          align: 'center' as const,
+          sorter: true,
+          sortOrder: sort.value?.key === 'defaultRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
+          render: (r: OrgListItem) => h('span', { class: 'num' }, `${r.defaultRate.toFixed(1)}%`),
+        } as DataTableColumns<OrgListItem>[number],
+      ]
+    : []),
   {
     title: '成交率',
     key: 'dealRate',

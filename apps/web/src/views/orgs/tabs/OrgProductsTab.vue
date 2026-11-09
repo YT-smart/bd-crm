@@ -9,8 +9,8 @@ import { ApiError } from '@/api/http';
 import { money } from '@/utils/format';
 
 const props = withDefaults(
-  defineProps<{ orgId: string; products: OrgProductItem[]; defaultRate: number; canEdit?: boolean }>(),
-  { canEdit: true },
+  defineProps<{ orgId: string; products: OrgProductItem[]; defaultRate: number; canEdit?: boolean; showRate?: boolean }>(),
+  { canEdit: true, showRate: true },
 );
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
@@ -130,7 +130,7 @@ function handleDelete(p: OrgProductItem) {
             <th>产品名称</th>
             <th>类型</th>
             <th>报价</th>
-            <th>佣金</th>
+            <th v-if="showRate">佣金</th>
             <th>说明</th>
             <th v-if="canEdit" class="op">操作</th>
           </tr>
@@ -146,7 +146,7 @@ function handleDelete(p: OrgProductItem) {
             <td class="strong">{{ p.name }}</td>
             <td class="nowrap">{{ p.type }}</td>
             <td class="num nowrap">{{ priceText(p) }}</td>
-            <td class="num nowrap">
+            <td v-if="showRate" class="num nowrap">
               <span :class="{ rate: p.rate != null }">{{ p.rate ?? defaultRate }}%</span>
             </td>
             <td class="note">{{ p.note || '-' }}</td>
@@ -198,7 +198,7 @@ function handleDelete(p: OrgProductItem) {
             <NInputNumber v-model:value="form.priceMax" :min="0" :precision="0" placeholder="最高价" style="width: 100%" />
           </NFormItem>
         </div>
-        <NFormItem label="佣金比例">
+        <NFormItem v-if="showRate" label="佣金比例">
           <NInputNumber
             id="product-rate"
             v-model:value="form.rate"

@@ -9,10 +9,10 @@ import {
 import { useDebounceFn } from '@vueuse/core';
 import {
   CheckCircle2, Download, Plus, RotateCcw, Search,
-  XCircle, Wallet, Undo2,
+  XCircle, Wallet, Undo2, Info,
 } from 'lucide-vue-next';
 import {
-  DealStatus, DEAL_STATUS_LABEL,
+  DealStatus, DEAL_STATUS_LABEL, PERM,
   type DealListItem, type DealListQuery, type DealSummary, type OrgOption,
 } from '@bdcrm/shared';
 import { dealApi } from '@/api';
@@ -49,6 +49,9 @@ const statusTabs = computed<Array<{ label: string; value: string | null; count: 
     { label: '已驳回', value: DealStatus.REJECTED, count: s?.rejected ?? 0 },
   ];
 });
+
+/** 员工只能看自己录入的成交，管理员看全部，机构账号看本机构 */
+const ownOnly = computed(() => auth.user?.role === 'STAFF' && !auth.can(PERM.DEAL_VIEW_ALL));
 
 /* ---------- 筛选与列表 ---------- */
 const filters = reactive({
@@ -444,6 +447,10 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <div v-if="ownOnly" class="scope-note rise-in">
+      <Info :size="14" :stroke-width="1.75" /> 这里只显示你自己录入的成交记录
+    </div>
+
     <!-- 统计卡片 -->
     <div v-if="summary" class="summary-row rise-in">
       <div class="summary-card">
@@ -739,4 +746,12 @@ onMounted(async () => {
 .audit-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 .settle-body p { margin: 0 0 12px; }
+.scope-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-3);
+}
 </style>

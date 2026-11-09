@@ -7,9 +7,10 @@ import type { OrgDetail } from '@bdcrm/shared';
 import { date } from '@/utils/format';
 import OrgCard from '../OrgCard.vue';
 
-withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean; internal?: boolean }>(), {
+withDefaults(defineProps<{ org: OrgDetail; canEdit?: boolean; internal?: boolean; showRate?: boolean }>(), {
   canEdit: true,
   internal: true,
+  showRate: true,
 });
 const emit = defineEmits<{ edit: [] }>();
 </script>
@@ -50,7 +51,7 @@ const emit = defineEmits<{ edit: [] }>();
         <span class="kv-label">业务类型</span>
         <span class="kv-value">{{ org.businessTypes.join('、') || '--' }}</span>
       </div>
-      <div class="kv-row">
+      <div v-if="showRate" class="kv-row">
         <span class="kv-label">默认佣金</span>
         <span class="kv-value num">{{ org.defaultRate }}%</span>
       </div>

@@ -10,6 +10,7 @@
 import { PrismaClient, type DealStatus, type OrgStatus, type Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { BUSINESS_TYPES, COUNTRY_GROUPS, computeCompleteness } from '@bdcrm/shared';
+import { seedLeads } from './seed-leads';
 
 const prisma = new PrismaClient();
 
@@ -115,6 +116,9 @@ const personName = () => pick(SURNAMES) + pick(GIVEN);
 async function clear() {
   await prisma.$transaction([
     prisma.auditLog.deleteMany(),
+    prisma.leadFollow.deleteMany(),
+    prisma.lead.deleteMany(),
+    prisma.orgReview.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.attachment.deleteMany(),
     prisma.followUp.deleteMany(),
@@ -331,6 +335,8 @@ async function main() {
     await prisma.deal.createMany({ data: deals.slice(i, i + 500) });
   }
 
+  const leadStat = await seedLeads(prisma);
+  console.log(`线索 ${leadStat.leads} 条，跟进记录 ${leadStat.follows} 条`);
   console.log(`完成：机构 ${orgs.length} 家，成交 ${deals.length} 笔，账号 ${1 + staffs.length + orgUsers.length} 个`);
   console.log('登录账号：admin / Admin@123，staff01 / Staff@123，org01 / Org@12345');
 }

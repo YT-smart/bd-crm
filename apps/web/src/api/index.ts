@@ -33,6 +33,12 @@ import type {
   OrgReviewItem,
   MapSearchQuery,
   MapSearchResult,
+  LeadDetail,
+  LeadInput,
+  LeadListItem,
+  LeadListQuery,
+  LeadSignInput,
+  LeadStatusCounts,
 } from '@bdcrm/shared';
 import { http } from './http';
 
@@ -143,6 +149,29 @@ export const dealApi = {
   settle: (data: DealSettleInput) => http.post<{ updated: number }>('/deals/settle', data),
   revokeSettle: (id: string, reason: string) =>
     http.post<{ status: string }>(`/deals/${id}/revoke-settle`, { reason }),
+};
+
+/* ---------- 客户线索 ---------- */
+
+export interface LeadFilterOptions {
+  assignees: StaffOption[];
+  creators: StaffOption[];
+  orgs: StaffOption[];
+}
+
+export const leadApi = {
+  list: (q: LeadListQuery) => http.get<PageResult<LeadListItem>>('/leads', { ...q }),
+  counts: (q: LeadListQuery) => http.get<LeadStatusCounts>('/leads/counts', { ...q }),
+  filterOptions: () => http.get<LeadFilterOptions>('/leads/filter-options'),
+  exportData: (q: LeadListQuery) => http.get<Record<string, unknown>[]>('/leads/export', { ...q }),
+  detail: (id: string) => http.get<LeadDetail>(`/leads/${id}`),
+  create: (data: LeadInput) => http.post<{ id: string }>('/leads', data),
+  update: (id: string, data: Partial<LeadInput>) => http.put<{ id: string }>(`/leads/${id}`, data),
+  remove: (id: string) => http.del<null>(`/leads/${id}`),
+  assign: (ids: string[], assigneeId: string | null) => http.post<{ updated: number }>('/leads/assign', { ids, assigneeId }),
+  addFollow: (id: string, method: string, content: string) =>
+    http.post<{ id: string }>(`/leads/${id}/follows`, { method, content }),
+  sign: (id: string, data: LeadSignInput) => http.post<{ dealId: string }>(`/leads/${id}/sign`, data),
 };
 
 /* ---------- 操作日志 ---------- */
