@@ -5,7 +5,7 @@ import {
   type DataTableColumns, type DataTableRowKey,
 } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
-import { ChevronDown, ChevronUp, Download, Info, Plus, RotateCcw, Search, UserPlus } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, Download, Lock, Plus, RotateCcw, Search, UserPlus } from 'lucide-vue-next';
 import {
   LEAD_DEGREES, LEAD_GRADES, LEAD_INTENTIONS, LEAD_PRODUCT_TAGS, LEAD_PUSH_STATUS,
   LEAD_REGIONS, LEAD_SOURCES, LEAD_WECHAT_STATUS, PERM,
@@ -317,7 +317,7 @@ onMounted(() => {
 <template>
   <div class="page">
     <div v-if="!canManage" class="scope-note rise-in">
-      <Info :size="14" :stroke-width="1.75" /> 这里只显示你录入的、或分配给你跟进的线索
+      <Lock :size="13" :stroke-width="1.75" /> 仅自己可见
     </div>
 
     <!-- 筛选面板 -->

@@ -15,7 +15,9 @@ import {
   type MetricWithDelta,
   type MyOrgDashboard,
   type ProvinceStat,
+  type StaffDashboard,
   type TrendPoint,
+  LEAD_PUSH_STATUS,
 } from '@bdcrm/shared';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
@@ -306,6 +308,102 @@ export async function getLists(): Promise<DashboardLists> {
     pendingDeals: pending.map(toDealBrief),
     recentDeals: recent.map(toDealBrief),
     incompleteOrgs: incomplete,
+  };
+}
+
+/* ---------------- 员工视图：我的业务 ---------------- */
+
+/** 超过这么多天没跟进的线索算「待跟进」 */
+const LEAD_STALE_DAYS = 7;
+
+/** userId 取自登录态：只统计本人录入的成交、本人录入或分给本人的线索 */
+export async function getStaffDashboard(userId: string, range: DashboardRange): Promise<StaffDashboard> {
+  const r = resolveRange(range);
+  const mine = { createdById: userId };
+  const approved = { ...mine, status: { in: APPROVED } };
+  const dealAgg = (from: Date, to: Date) =>
+    prisma.deal.aggregate({
+      where: { ...approved, dealAt: { gte: from, lt: to } },
+      _count: { _all: true },
+      _sum: { amount: true, commission: true },
+    });
+  const leadScope: Prisma.LeadWhereInput = { OR: [{ createdById: userId }, { assigneeId: userId }] };
+  const stale = new Date(Date.now() - LEAD_STALE_DAYS * 86400_000);
+  const months = lastMonths(12);
+  const from = monthStart(-11);
+
+  const [cur, prev, receivable, settled, statusGroups, recent, trendRows, topRows, leadGroups, leadNew, needFollow] =
+    await Promise.all([
+      dealAgg(r.start, r.end),
+      dealAgg(r.prevStart, r.prevEnd),
+      prisma.deal.aggregate({ where: { ...mine, status: 'PENDING_PAYMENT' }, _count: { _all: true }, _sum: { commission: true } }),
+      prisma.deal.aggregate({ where: { ...mine, status: 'SETTLED' }, _sum: { commission: true } }),
+      prisma.deal.groupBy({ by: ['status'], where: { ...mine, status: { in: ['PENDING_AUDIT', 'REJECTED'] } }, _count: { _all: true } }),
+      prisma.deal.findMany({ where: mine, orderBy: { createdAt: 'desc' }, take: 6, select: dealBriefSelect }),
+      prisma.$queryRaw<{ month: string; deal_count: number; amount: number; commission: number }[]>`
+        SELECT to_char(date_trunc('month', ${localTs('dealAt')}), 'YYYY-MM') AS month,
+               COUNT(*)::int AS deal_count,
+               COALESCE(SUM(amount), 0)::float8 AS amount,
+               COALESCE(SUM(commission), 0)::float8 AS commission
+        FROM "Deal"
+        WHERE status IN ${APPROVED_SQL} AND "createdById" = ${userId} AND "dealAt" >= ${from}
+        GROUP BY 1`,
+      prisma.$queryRaw<{ id: string; name: string; deal_count: number; amount: number; commission: number }[]>`
+        SELECT o.id, o.name,
+               COUNT(d.id)::int AS deal_count,
+               COALESCE(SUM(d.amount), 0)::float8 AS amount,
+               COALESCE(SUM(d.commission), 0)::float8 AS commission
+        FROM "Deal" d
+        JOIN "Org" o ON o.id = d."orgId"
+        WHERE d.status IN ${APPROVED_SQL} AND d."createdById" = ${userId}
+          AND d."dealAt" >= ${r.start} AND o."deletedAt" IS NULL
+        GROUP BY o.id, o.name
+        ORDER BY commission DESC
+        LIMIT 5`,
+      prisma.lead.groupBy({ by: ['pushStatus'], where: leadScope, _count: { _all: true } }),
+      prisma.lead.count({ where: { AND: [leadScope, { createdAt: { gte: r.start, lt: r.end } }] } }),
+      prisma.lead.count({
+        where: {
+          AND: [
+            leadScope,
+            { dealId: null, pushStatus: { not: '已签约' } },
+            { OR: [{ intention: null }, { intention: { notIn: ['放弃', '联系不上', '已签约'] } }] },
+            { OR: [{ lastFollowAt: { lt: stale } }, { lastFollowAt: null, createdAt: { lt: stale } }] },
+          ],
+        },
+      }),
+    ]);
+
+  const tm = new Map(trendRows.map((d) => [d.month, d]));
+  const byStatus: Record<string, number> = {};
+  for (const s of LEAD_PUSH_STATUS) byStatus[s] = 0;
+  let leadTotal = 0;
+  for (const g of leadGroups) {
+    byStatus[g.pushStatus] = g._count._all;
+    leadTotal += g._count._all;
+  }
+  const statusCount = (s: string) => statusGroups.find((g) => g.status === s)?._count._all ?? 0;
+
+  return {
+    range,
+    dealCount: metric(cur._count._all, prev._count._all),
+    dealAmount: metric(num(cur._sum.amount), num(prev._sum.amount)),
+    commission: metric(num(cur._sum.commission), num(prev._sum.commission)),
+    receivable: { amount: num(receivable._sum.commission), count: receivable._count._all },
+    settledTotal: num(settled._sum.commission),
+    pendingAudit: statusCount('PENDING_AUDIT'),
+    rejected: statusCount('REJECTED'),
+    trend: months.map((month) => ({
+      month,
+      dealCount: tm.get(month)?.deal_count ?? 0,
+      amount: tm.get(month)?.amount ?? 0,
+      commission: tm.get(month)?.commission ?? 0,
+      settled: 0,
+      newOrgs: 0,
+    })),
+    topOrgs: topRows.map((t) => ({ id: t.id, name: t.name, dealCount: t.deal_count, amount: t.amount, commission: t.commission })),
+    recentDeals: recent.map(toDealBrief),
+    leads: { total: leadTotal, byStatus, newInRange: leadNew, needFollow },
   };
 }
 

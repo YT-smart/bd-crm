@@ -4,7 +4,7 @@ import { NSkeleton } from 'naive-ui';
 import type { DashboardRange, TopOrgItem } from '@bdcrm/shared';
 import { money, moneyShort, num } from '@/utils/format';
 
-const props = defineProps<{ data: TopOrgItem[]; loading?: boolean }>();
+const props = defineProps<{ data: TopOrgItem[]; loading?: boolean; title?: string; sub?: string; showRange?: boolean }>();
 /** 时间范围只影响这张卡，所以切换放在卡片里，而不是页面顶部 */
 const range = defineModel<DashboardRange>('range', { default: 'month' });
 const RANGES: { value: DashboardRange; label: string }[] = [
@@ -20,10 +20,10 @@ const max = computed(() => Math.max(1, ...props.data.map((d) => d.commission)));
   <div class="card">
     <div class="card-header">
       <div>
-        <div class="card-title">机构佣金贡献 Top 10</div>
-        <div class="card-sub">按已核实成交的佣金排序</div>
+        <div class="card-title">{{ title ?? '机构佣金贡献 Top 10' }}</div>
+        <div class="card-sub">{{ sub ?? '按已核实成交的佣金排序' }}</div>
       </div>
-      <div class="segmented seg-sm" role="tablist" aria-label="时间范围">
+      <div v-if="showRange !== false" class="segmented seg-sm" role="tablist" aria-label="时间范围">
         <button
           v-for="r in RANGES"
           :key="r.value"

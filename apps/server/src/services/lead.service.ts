@@ -251,6 +251,7 @@ function dataOf(input: Partial<LeadInput>): Prisma.LeadUncheckedUpdateInput {
 }
 
 export async function createLead(input: LeadInput, userId: string, canAssign: boolean) {
+  if (input.pushStatus === '已签约') throw new AppError(400, '「已签约」请在线索详情里点「登记签约」');
   await checkOrg(input.orgId);
   // 员工录入的线索默认自己跟进；只有管理员能指定别人
   const assigneeId = canAssign ? (input.assigneeId ?? null) : userId;
@@ -274,6 +275,13 @@ export async function createLead(input: LeadInput, userId: string, canAssign: bo
 
 export async function updateLead(id: string, input: Partial<LeadInput>, scope: LeadScope, canAssign: boolean) {
   const lead = await findInScope(id, scope);
+  if (lead.dealId) {
+    // 已签约的线索：机构和推出状态跟成交记录绑定，不能再改
+    if (input.orgId !== undefined && input.orgId !== lead.orgId) throw new AppError(400, '已签约的线索不能更换机构');
+    if (input.pushStatus !== undefined && input.pushStatus !== lead.pushStatus) throw new AppError(400, '已签约的线索不能修改推出状态');
+  } else if (input.pushStatus === '已签约') {
+    throw new AppError(400, '「已签约」请在线索详情里点「登记签约」');
+  }
   if (input.orgId !== undefined) await checkOrg(input.orgId);
   const data = dataOf(input);
   // 换了推送机构就记一下推送时间

@@ -14,6 +14,7 @@ import TopOrgs from './components/TopOrgs.vue';
 import DealTable from './components/DealTable.vue';
 import IncompleteOrgs from './components/IncompleteOrgs.vue';
 import DealOverview from './components/DealOverview.vue';
+import StaffOverview from './components/StaffOverview.vue';
 
 const message = useMessage();
 /** 成交笔数 / 成交额 / 佣金等经营数据只给管理员看，员工看到的是机构维度的概览 */
@@ -85,15 +86,18 @@ watch(topRange, loadDist);
           :data="lists?.pendingDeals ?? []"
           :loading="loadingStatic"
         />
-        <IncompleteOrgs class="span-4 rise-in" style="animation-delay: 160ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
+        <BusinessDonut class="span-4 rise-in" style="animation-delay: 160ms" :data="dist?.businessTypes ?? []" :loading="loadingDist && !dist" />
 
-        <ChinaMapCard class="span-8 rise-in" style="animation-delay: 200ms" :provinces="dist?.provinces ?? []" :loading="loadingDist && !dist" />
-        <BusinessDonut class="span-4 rise-in" style="animation-delay: 240ms" :data="dist?.businessTypes ?? []" :loading="loadingDist && !dist" />
+        <ChinaMapCard class="span-12 rise-in" style="animation-delay: 200ms" :provinces="dist?.provinces ?? []" :loading="loadingDist && !dist" />
+        <IncompleteOrgs class="span-12 rise-in" style="animation-delay: 240ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
       </section>
     </template>
 
-    <!-- 员工：只看机构维度，不展示成交、成交额、佣金 -->
-    <section v-else class="grid-12">
+    <!-- 员工：上面是自己的业务数据，下面是机构概况 -->
+    <template v-else>
+    <StaffOverview />
+    <h2 class="sec-title">机构概况</h2>
+    <section class="grid-12">
       <StatCard
         class="span-6 rise-in"
         label="合作中机构"
@@ -113,21 +117,27 @@ watch(topRange, loadDist);
       />
 
       <ChinaMapCard
-        class="span-8 rise-in"
+        class="span-12 rise-in"
         style="animation-delay: 80ms"
         :provinces="dist?.provinces ?? []"
         :loading="loadingDist && !dist"
         :finance="false"
       />
       <BusinessDonut class="span-4 rise-in" style="animation-delay: 120ms" :data="dist?.businessTypes ?? []" :loading="loadingDist && !dist" />
-
-      <IncompleteOrgs class="span-12 rise-in" style="animation-delay: 160ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
+      <IncompleteOrgs class="span-8 rise-in" style="animation-delay: 160ms" :data="lists?.incompleteOrgs ?? []" :loading="loadingStatic" />
     </section>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .ov-top {
   margin-bottom: 16px;
+}
+.sec-title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
 }
 </style>

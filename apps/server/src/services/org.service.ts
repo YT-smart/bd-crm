@@ -3,6 +3,7 @@ import {
   APPROVED_DEAL_STATUSES,
   DealStatus,
   calcCompleteness,
+  MAX_MAIN_PRODUCTS,
   normalizeCityKeyword,
   PROVINCE_OF_CITY,
   type OrgListItem,
@@ -55,8 +56,8 @@ function buildOrgWhere(q: OrgListQuery): Prisma.OrgWhereInput {
   return where;
 }
 
-/** 筛选面板里平铺显示的城市 / 国家：至少这么多家机构填了才出现 */
-export const ORG_FACET_MIN = 5;
+/** 筛选面板里城市 / 国家的机构数（常用项后面显示的数字） */
+export const ORG_FACET_MIN = 1;
 
 /**
  * 机构筛选面板的常用项：按录入的机构动态统计。
@@ -273,6 +274,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     priceMax: num(p.priceMax) || null,
     rate: p.rate != null ? num(p.rate) : null,
     level: p.level,
+    grades: p.grades,
     note: p.note,
   }));
 
@@ -451,18 +453,40 @@ export async function deleteContact(orgId: string, contactId: string) {
 
 /* ---------- 产品 CRUD ---------- */
 
-export async function addProduct(orgId: string, input: { name: string; type: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; level?: number | null; note?: string | null }) {
+type ProductData = {
+  name?: string;
+  type?: string;
+  priceMin?: number | null;
+  priceMax?: number | null;
+  rate?: number | null;
+  level?: number | null;
+  grades?: string[];
+  note?: string | null;
+};
+
+/** 主推（1 级）产品每家机构最多 MAX_MAIN_PRODUCTS 个 */
+async function ensureMainSlot(orgId: string, exceptId?: string) {
+  const n = await prisma.orgProduct.count({ where: { orgId, level: 1, ...(exceptId ? { id: { not: exceptId } } : {}) } });
+  if (n >= MAX_MAIN_PRODUCTS) throw new AppError(400, `主推产品最多 ${MAX_MAIN_PRODUCTS} 个，请先把其他主推产品改成别的级别`);
+}
+
+export async function addProduct(orgId: string, input: ProductData & { name: string; type: string }) {
   await ensureOrg(orgId);
+  if (input.level === 1) await ensureMainSlot(orgId);
   const product = await prisma.orgProduct.create({
-    data: { orgId, name: input.name, type: input.type, priceMin: input.priceMin ?? null, priceMax: input.priceMax ?? null, rate: input.rate ?? null, level: input.level ?? null, note: input.note ?? null },
+    data: {
+      orgId, name: input.name, type: input.type, priceMin: input.priceMin ?? null, priceMax: input.priceMax ?? null,
+      rate: input.rate ?? null, level: input.level ?? null, grades: input.grades ?? [], note: input.note ?? null,
+    },
   });
   await refreshCompleteness(orgId);
   return product;
 }
 
-export async function updateProduct(orgId: string, productId: string, input: { name?: string; type?: string; priceMin?: number | null; priceMax?: number | null; rate?: number | null; level?: number | null; note?: string | null }) {
+export async function updateProduct(orgId: string, productId: string, input: ProductData) {
   const product = await prisma.orgProduct.findFirst({ where: { id: productId, orgId } });
   if (!product) throw new AppError(404, '产品不存在');
+  if (input.level === 1 && product.level !== 1) await ensureMainSlot(orgId, productId);
   return prisma.orgProduct.update({ where: { id: productId }, data: input });
 }
 
@@ -475,9 +499,10 @@ export async function deleteProduct(orgId: string, productId: string) {
 
 /* ---------- 跟进记录 ---------- */
 
-export async function listFollowUps(orgId: string): Promise<OrgFollowUpItem[]> {
+/** onlyUserId：员工只看自己记的 */
+export async function listFollowUps(orgId: string, onlyUserId?: string): Promise<OrgFollowUpItem[]> {
   const rows = await prisma.followUp.findMany({
-    where: { orgId },
+    where: { orgId, ...(onlyUserId ? { userId: onlyUserId } : {}) },
     orderBy: { followAt: 'desc' },
     include: { user: { select: { name: true } } },
   });
@@ -499,10 +524,10 @@ export async function addFollowUp(orgId: string, userId: string, input: { method
   });
 }
 
-export async function deleteFollowUp(followUpId: string, userId: string, isAdmin: boolean) {
-  const fu = await prisma.followUp.findUnique({ where: { id: followUpId } });
-  if (!fu) throw new AppError(404, '跟进记录不存在');
-  if (!isAdmin && fu.userId !== userId) throw new AppError(403, '只能删除自己的跟进记录');
+export async function deleteFollowUp(orgId: string, followUpId: string, userId: string, isAdmin: boolean) {
+  const fu = await prisma.followUp.findFirst({ where: { id: followUpId, orgId } });
+  if (!fu) throw new AppError(404, '记录不存在');
+  if (!isAdmin && fu.userId !== userId) throw new AppError(403, '只能删除自己的记录');
   await prisma.followUp.delete({ where: { id: followUpId } });
 }
 

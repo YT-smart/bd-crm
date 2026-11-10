@@ -141,10 +141,10 @@ async function submit() {
           <NSelect v-model:value="form.intention" :options="opts(LEAD_INTENTIONS)" clearable placeholder="意向度" />
         </NFormItem>
         <NFormItem label="跟进机构">
-          <OrgPicker v-model:value="form.orgId" :label="orgLabel" />
+          <OrgPicker v-model:value="form.orgId" :label="orgLabel" :disabled="!!lead?.dealId" />
         </NFormItem>
         <NFormItem label="推出状态">
-          <NSelect v-model:value="form.pushStatus" :options="statusOptions" />
+          <NSelect v-model:value="form.pushStatus" :options="statusOptions" :disabled="!!lead?.dealId" />
         </NFormItem>
         <NFormItem v-if="canAssign" label="跟进人">
           <NSelect v-model:value="form.assigneeId" :options="staffOptions" clearable filterable placeholder="分配给谁跟进" />

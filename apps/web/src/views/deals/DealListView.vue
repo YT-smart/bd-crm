@@ -9,7 +9,7 @@ import {
 import { useDebounceFn } from '@vueuse/core';
 import {
   CheckCircle2, Download, Plus, RotateCcw, Search,
-  XCircle, Wallet, Undo2, Info,
+  XCircle, Wallet, Undo2, Lock,
 } from 'lucide-vue-next';
 import {
   DealStatus, DEAL_STATUS_LABEL, PERM,
@@ -448,7 +448,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div v-if="ownOnly" class="scope-note rise-in">
-      <Info :size="14" :stroke-width="1.75" /> 这里只显示你自己录入的成交记录
+      <Lock :size="13" :stroke-width="1.75" /> 仅自己可见
     </div>
 
     <!-- 统计卡片 -->

@@ -3,7 +3,10 @@ import { ref, reactive, computed } from 'vue';
 import { NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, useMessage, useDialog } from 'naive-ui';
 import { Plus } from 'lucide-vue-next';
 import OrgCard from '../OrgCard.vue';
-import { BUSINESS_TYPES, BUSINESS_TYPE_MAX_LEN, PRODUCT_LEVELS, PRODUCT_LEVEL_LABEL, type OrgProductItem, type ProductInput } from '@bdcrm/shared';
+import {
+  BUSINESS_TYPES, BUSINESS_TYPE_MAX_LEN, LEAD_GRADES, MAX_MAIN_PRODUCTS, PRODUCT_LEVELS, PRODUCT_LEVEL_LABEL,
+  type OrgProductItem, type ProductInput,
+} from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { money } from '@/utils/format';
@@ -37,7 +40,16 @@ const typeOptions = computed(() => [
   })),
   { label: '其他（自定义）', value: OTHER },
 ]);
-const levelOptions = PRODUCT_LEVELS.map((l) => ({ label: PRODUCT_LEVEL_LABEL[l], value: l }));
+/** 主推最多 MAX_MAIN_PRODUCTS 个：别的产品已经占满时，1 级不能再选 */
+const mainTaken = computed(() => props.products.filter((p) => p.level === 1 && p.id !== editing.value?.id).length);
+const levelOptions = computed(() =>
+  PRODUCT_LEVELS.map((l) => {
+    const full = l === 1 && mainTaken.value >= MAX_MAIN_PRODUCTS;
+    return { label: full ? `${PRODUCT_LEVEL_LABEL[l]}（已满 ${MAX_MAIN_PRODUCTS} 个）` : PRODUCT_LEVEL_LABEL[l], value: l, disabled: full };
+  }),
+);
+/** 客户年级：常用项，也可以直接输入 */
+const gradeOptions = LEAD_GRADES.filter((g) => g !== '未明确').map((g) => ({ label: g, value: g }));
 
 const form = reactive<ProductInput>({
   name: '',
@@ -46,12 +58,13 @@ const form = reactive<ProductInput>({
   priceMax: null,
   rate: null,
   level: null,
+  grades: [],
   note: '',
 });
 
 function openAdd() {
   editing.value = null;
-  Object.assign(form, { name: '', type: BUSINESS_TYPES[0], priceMin: null, priceMax: null, rate: null, level: null, note: '' });
+  Object.assign(form, { name: '', type: BUSINESS_TYPES[0], priceMin: null, priceMax: null, rate: null, level: null, grades: [], note: '' });
   customType.value = '';
   showForm.value = true;
 }
@@ -65,6 +78,7 @@ function openEdit(p: OrgProductItem) {
     priceMax: p.priceMax,
     rate: p.rate,
     level: p.level,
+    grades: [...p.grades],
     note: p.note ?? '',
   });
   customType.value = '';
@@ -129,6 +143,7 @@ function handleDelete(p: OrgProductItem) {
             <th>推荐</th>
             <th>产品名称</th>
             <th>类型</th>
+            <th>客户年级</th>
             <th>报价</th>
             <th v-if="showRate">佣金</th>
             <th>说明</th>
@@ -145,6 +160,10 @@ function handleDelete(p: OrgProductItem) {
             </td>
             <td class="strong">{{ p.name }}</td>
             <td class="nowrap">{{ p.type }}</td>
+            <td class="grades">
+              <span v-for="g in p.grades" :key="g" class="gtag">{{ g }}</span>
+              <span v-if="!p.grades.length" class="text-3">-</span>
+            </td>
             <td class="num nowrap">{{ priceText(p) }}</td>
             <td v-if="showRate" class="num nowrap">
               <span :class="{ rate: p.rate != null }">{{ p.rate ?? defaultRate }}%</span>
@@ -186,8 +205,20 @@ function handleDelete(p: OrgProductItem) {
             v-model:value="form.level"
             :options="levelOptions"
             clearable
-            placeholder="1 级为主推，产品按级别排序"
-            style="width: 240px"
+            :placeholder="`1 级为主推（最多 ${MAX_MAIN_PRODUCTS} 个），按级别排序`"
+            style="width: 300px"
+          />
+        </NFormItem>
+        <NFormItem label="客户年级">
+          <NSelect
+            id="product-grades"
+            v-model:value="form.grades"
+            :options="gradeOptions"
+            multiple
+            filterable
+            tag
+            clearable
+            placeholder="适合哪些年级的学生，可多选，也可直接输入"
           />
         </NFormItem>
         <div style="display: flex; gap: 16px">
@@ -258,6 +289,18 @@ function handleDelete(p: OrgProductItem) {
 .strong { font-weight: 500; white-space: nowrap; }
 .nowrap { white-space: nowrap; }
 .note { color: var(--text-2); min-width: 140px; }
+.grades { min-width: 120px; }
+.gtag {
+  display: inline-block;
+  margin: 0 4px 4px 0;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--neutral-soft);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
 .rate { color: var(--brand); font-weight: 600; }
 .plevel {
   display: inline-block;

@@ -9,7 +9,8 @@ import { useAuthStore } from '@/stores/auth';
 import { date } from '@/utils/format';
 import OrgCard from '../OrgCard.vue';
 
-const props = withDefaults(defineProps<{ orgId: string; canEdit?: boolean }>(), { canEdit: true });
+/** 流量顾问成交记录：管理员看全部，员工只看、只记自己的；机构账号不显示 */
+const props = defineProps<{ orgId: string }>();
 const message = useMessage();
 const dialog = useDialog();
 const auth = useAuthStore();
@@ -69,7 +70,7 @@ async function save() {
       content: form.content,
       followAt: new Date(form.followAt).toISOString(),
     });
-    message.success('跟进记录已添加');
+    message.success('记录已添加');
     showForm.value = false;
     load();
   } catch (e) {
@@ -81,8 +82,8 @@ async function save() {
 
 function handleDelete(fu: OrgFollowUpItem) {
   dialog.warning({
-    title: '删除跟进记录',
-    content: '确定删除此条跟进记录吗？',
+    title: '删除记录',
+    content: '确定删除这条记录吗？',
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -99,12 +100,13 @@ function handleDelete(fu: OrgFollowUpItem) {
 </script>
 
 <template>
-  <OrgCard :title="`跟进记录${followUps.length ? `（${followUps.length}）` : ''}`">
-    <template v-if="canEdit" #extra>
-      <button class="btn-outline-sm" @click="openAdd"><Plus :size="13" /> 添加跟进</button>
+  <OrgCard :title="`流量顾问成交记录${followUps.length ? `（${followUps.length}）` : ''}`">
+    <template #extra>
+      <button id="fu-add" class="btn-outline-sm" @click="openAdd"><Plus :size="13" /> 添加记录</button>
     </template>
 
-    <div v-if="!followUps.length && !loading" class="empty text-3">暂无跟进记录</div>
+    <p v-if="auth.user?.role !== 'ADMIN'" class="scope text-3">仅自己可见</p>
+    <div v-if="!followUps.length && !loading" class="empty text-3">暂无记录</div>
 
     <NTimeline v-else>
       <NTimelineItem v-for="fu in followUps" :key="fu.id" :time="date(fu.followAt) + ' · ' + fu.userName">
@@ -115,7 +117,7 @@ function handleDelete(fu: OrgFollowUpItem) {
           <div class="fu-header">
             <span class="fu-method">{{ fu.method }}</span>
             <button
-              v-if="canEdit && (auth.user?.id === fu.userId || auth.user?.role === 'ADMIN')"
+              v-if="auth.user?.id === fu.userId || auth.user?.role === 'ADMIN'"
               class="icon-btn danger"
               title="删除"
               @click="handleDelete(fu)"
@@ -128,7 +130,7 @@ function handleDelete(fu: OrgFollowUpItem) {
       </NTimelineItem>
     </NTimeline>
 
-    <NModal v-model:show="showForm" preset="card" title="添加跟进记录" style="max-width: 520px">
+    <NModal v-model:show="showForm" preset="card" title="添加流量顾问成交记录" style="max-width: 520px">
       <NForm label-placement="left" label-width="80" :show-feedback="false">
         <NFormItem label="方式" required>
           <NSelect v-model:value="form.method" :options="methodOptions" />
@@ -137,7 +139,7 @@ function handleDelete(fu: OrgFollowUpItem) {
           <NDatePicker v-model:value="form.followAt" type="datetime" clearable style="width: 100%" />
         </NFormItem>
         <NFormItem label="内容" required>
-          <NInput v-model:value="form.content" type="textarea" placeholder="记录跟进内容..." :autosize="{ minRows: 3, maxRows: 8 }" maxlength="2000" show-count />
+          <NInput v-model:value="form.content" type="textarea" placeholder="学生、成交产品、金额、进展等" :autosize="{ minRows: 3, maxRows: 8 }" maxlength="2000" show-count />
         </NFormItem>
       </NForm>
       <template #action>
@@ -151,6 +153,10 @@ function handleDelete(fu: OrgFollowUpItem) {
 </template>
 
 <style scoped>
+.scope {
+  margin: -4px 0 8px;
+  font-size: 12px;
+}
 .empty {
   font-size: 13px;
   padding: 18px 0;

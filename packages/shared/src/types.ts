@@ -170,6 +170,35 @@ export interface MyOrgDashboard {
   recentDeals: DealBrief[];
 }
 
+/** 员工仪表盘「我的业务」：只统计自己录入的成交、自己录入或分给自己的线索 */
+export interface StaffDashboard {
+  range: DashboardRange;
+  /** 本期已核实成交（按成交日期） */
+  dealCount: MetricWithDelta;
+  dealAmount: MetricWithDelta;
+  commission: MetricWithDelta;
+  /** 已核实、佣金还没到账 */
+  receivable: { amount: number; count: number };
+  /** 累计已到账佣金 */
+  settledTotal: number;
+  pendingAudit: number;
+  rejected: number;
+  /** 近 12 个月 */
+  trend: TrendPoint[];
+  /** 本期合作最多的机构（按佣金） */
+  topOrgs: TopOrgItem[];
+  recentDeals: DealBrief[];
+  leads: {
+    total: number;
+    /** 推出状态 → 数量 */
+    byStatus: Record<string, number>;
+    /** 本期新增 */
+    newInRange: number;
+    /** 超过 7 天没跟进、还没签约也没放弃的 */
+    needFollow: number;
+  };
+}
+
 /* ---------------- 机构 ---------------- */
 
 export interface OrgListItem {
@@ -237,6 +266,8 @@ export interface OrgProductItem {
   rate: number | null;
   /** 推荐级别 1-4，1 为主推；未设置为 null */
   level: number | null;
+  /** 适合的客户年级 */
+  grades: string[];
   note: string | null;
 }
 
@@ -389,6 +420,7 @@ export interface ProductInput {
   priceMax?: number | null;
   rate?: number | null;
   level?: number | null;
+  grades?: string[];
   note?: string | null;
 }
 

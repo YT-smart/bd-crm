@@ -30,7 +30,7 @@ const ACTION_LABELS: Record<string, string> = {
   delete: '删除',
   addContact: '添加联系人',
   addProduct: '添加产品',
-  addFollowUp: '添加跟进',
+  addFollowUp: '添加流量顾问成交记录',
   addReview: '添加评价',
   deleteReview: '删除评价',
   updateProduct: '编辑产品',

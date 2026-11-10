@@ -198,7 +198,7 @@ const signSchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
-router.post('/:id/sign', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
+router.post('/:id/sign', requirePerm(PERM.LEAD_EDIT), requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const input = signSchema.parse(req.body);
   const deal = await signLead(req.params.id, input, req.user!.id, leadScope(req));
   writeAudit(req, {

@@ -143,14 +143,10 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
 
 router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
   const detail = await getOrgDetail(req.params.id);
-  // 跟钱有关的（合作信息、佣金比例、合作数据）只给管理员；机构账号仍可看自己的
+  // 合作信息（默认佣金、结算周期、合同、收款账户）员工也能看；
+  // 产品单独佣金、合作数据只给管理员，机构账号仍可看自己的
   if (!canSeeOrgMoney(req)) {
     Object.assign(detail, {
-      settleCycle: null,
-      bankInfo: null,
-      contractStart: null,
-      contractEnd: null,
-      defaultRate: 0,
       products: detail.products.map((p) => ({ ...p, rate: null })),
       stats: { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0, pendingAudit: 0 },
     });
@@ -306,6 +302,7 @@ const productSchema = z.object({
   priceMin: z.number().min(0).nullish(),
   priceMax: z.number().min(0).nullish(),
   rate: z.number().min(0).max(100).nullish(),
+  grades: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
   note: z.string().max(500).nullish(),
 });
 
@@ -329,7 +326,9 @@ router.delete('/:id/products/:productId', requirePerm(...CAN_EDIT), async (req, 
   ok(res, null);
 });
 
-/* ============ 跟进记录 ============ */
+/* ============ 流量顾问成交记录（原跟进记录） ============
+ * 机构账号看不到；管理员看全部；员工只看、只记自己的。
+ */
 
 const followUpSchema = z.object({
   method: z.enum(['电话', '微信', '面谈', '邮件']),
@@ -338,10 +337,11 @@ const followUpSchema = z.object({
 });
 
 router.get('/:id/follow-ups', requirePerm(PERM.ORG_VIEW), async (req, res) => {
-  ok(res, await listFollowUps(req.params.id));
+  const onlyUserId = req.user!.role === 'ADMIN' ? undefined : req.user!.id;
+  ok(res, await listFollowUps(req.params.id, onlyUserId));
 });
 
-router.post('/:id/follow-ups', requirePerm(PERM.ORG_UPDATE), async (req, res) => {
+router.post('/:id/follow-ups', requirePerm(PERM.ORG_VIEW), async (req, res) => {
   const orgId = req.params.id;
   const input = followUpSchema.parse(req.body);
   const fu = await addFollowUp(orgId, req.user!.id, input);
@@ -349,9 +349,9 @@ router.post('/:id/follow-ups', requirePerm(PERM.ORG_UPDATE), async (req, res) =>
   ok(res, { id: fu.id }, 201);
 });
 
-router.delete('/:id/follow-ups/:fuId', requirePerm(PERM.ORG_UPDATE), async (req, res) => {
+router.delete('/:id/follow-ups/:fuId', requirePerm(PERM.ORG_VIEW), async (req, res) => {
   const isAdmin = req.user!.role === 'ADMIN';
-  await deleteFollowUp(req.params.fuId, req.user!.id, isAdmin);
+  await deleteFollowUp(req.params.id, req.params.fuId, req.user!.id, isAdmin);
   ok(res, null);
 });
 

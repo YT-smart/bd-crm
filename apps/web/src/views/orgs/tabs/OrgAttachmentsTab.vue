@@ -6,6 +6,7 @@ import {
 } from 'lucide-vue-next';
 import {
   ATTACHMENT_CATEGORY_LABEL,
+  ATTACHMENT_UPLOAD_CATEGORIES,
   ATTACHMENT_MAX_MB,
   AttachmentCategory,
   type OrgAttachmentItem,
@@ -28,21 +29,27 @@ const list = ref<OrgAttachmentItem[]>([]);
 const loading = ref(true);
 const filter = ref<AttachmentCategory | 'ALL'>('ALL');
 
-const uploadCategory = ref<AttachmentCategory>(AttachmentCategory.LICENSE);
+const uploadCategory = ref<AttachmentCategory>(AttachmentCategory.INTRO);
 const uploading = ref(false);
 const progress = ref(0);
 const dragOver = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp,.gif,.zip,.rar,.7z';
-const categories = Object.keys(ATTACHMENT_CATEGORY_LABEL) as AttachmentCategory[];
-const categoryOptions = categories.map((c) => ({ label: ATTACHMENT_CATEGORY_LABEL[c], value: c }));
+const categoryOptions = ATTACHMENT_UPLOAD_CATEGORIES.map((c) => ({ label: ATTACHMENT_CATEGORY_LABEL[c], value: c }));
 
 const counts = computed(() => {
   const m: Record<string, number> = { ALL: list.value.length };
   for (const a of list.value) m[a.category] = (m[a.category] ?? 0) + 1;
   return m;
 });
+/** 筛选标签：可上传的分类，加上以前上传过的旧分类（资质证书、合同协议） */
+const categories = computed(() => [
+  ...ATTACHMENT_UPLOAD_CATEGORIES,
+  ...(Object.keys(ATTACHMENT_CATEGORY_LABEL) as AttachmentCategory[]).filter(
+    (c) => !ATTACHMENT_UPLOAD_CATEGORIES.includes(c) && counts.value[c],
+  ),
+]);
 const filtered = computed(() => (filter.value === 'ALL' ? list.value : list.value.filter((a) => a.category === filter.value)));
 
 async function load() {

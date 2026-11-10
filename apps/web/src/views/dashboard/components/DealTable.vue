@@ -23,7 +23,7 @@ const router = useRouter();
 
 function columns(showOrg: boolean): DataTableColumns<DealBrief> {
   const cols: DataTableColumns<DealBrief> = [
-    { title: '学生', key: 'studentName', width: 100 },
+    { title: '学生', key: 'studentName', width: 90, ellipsis: { tooltip: true } },
     {
       title: '成交金额',
       key: 'amount',
@@ -38,11 +38,11 @@ function columns(showOrg: boolean): DataTableColumns<DealBrief> {
       width: 120,
       render: (r) => h('span', { class: 'num' }, money(r.commission)),
     },
-    { title: '成交日期', key: 'dealAt', width: 120, render: (r) => h('span', { class: 'num text-2' }, date(r.dealAt)) },
+    { title: '成交日期', key: 'dealAt', width: 120, render: (r) => h('span', { class: 'num text-2', style: 'white-space: nowrap' }, date(r.dealAt)) },
     { title: '状态', key: 'status', width: 96, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
   ];
   if (showOrg) {
-    cols.unshift({ title: '机构', key: 'orgName', ellipsis: { tooltip: true }, minWidth: 180 });
+    cols.unshift({ title: '机构', key: 'orgName', ellipsis: { tooltip: true }, minWidth: 140 });
   }
   return cols;
 }

@@ -22,14 +22,17 @@ const lead = ref<LeadDetail | null>(null);
 const loading = ref(false);
 
 async function load() {
-  if (!props.leadId) return;
+  const id = props.leadId;
+  if (!id) return;
+  if (lead.value?.id !== id) lead.value = null;
   loading.value = true;
   try {
-    lead.value = await leadApi.detail(props.leadId);
+    const d = await leadApi.detail(id);
+    if (props.leadId === id) lead.value = d;
   } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '加载失败');
+    if (props.leadId === id) message.error(e instanceof ApiError ? e.message : '加载失败');
   } finally {
-    loading.value = false;
+    if (props.leadId === id) loading.value = false;
   }
 }
 watch(() => [show.value, props.leadId], () => { if (show.value) load(); }, { immediate: true });

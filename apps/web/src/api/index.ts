@@ -16,6 +16,7 @@ import type {
   ImportResult,
   LoginLogItem,
   MyOrgDashboard,
+  StaffDashboard,
   OrgAttachmentItem,
   OrgCreateInput,
   OrgCreateResult,
@@ -58,6 +59,7 @@ export const dashboardApi = {
   lists: () => http.get<DashboardLists>('/dashboard/lists'),
   map: (q: MapSearchQuery) => http.get<MapSearchResult>('/dashboard/map', { ...q }),
   my: () => http.get<MyOrgDashboard>('/dashboard/my'),
+  me: (range: DashboardRange) => http.get<StaffDashboard>('/dashboard/me', { range }),
 };
 
 /** 机构筛选面板的常用城市 / 国家（至少 min 家机构） */

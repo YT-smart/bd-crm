@@ -63,6 +63,12 @@ router.get('/lists', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
   ok(res, data);
 });
 
+/* 员工：我的业务（只统计自己的成交和线索，userId 取自登录态） */
+router.get('/me', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
+  const { range } = rangeSchema.parse(req.query);
+  ok(res, await dashboard.getStaffDashboard(req.user!.id, range));
+});
+
 /* 机构：仅本机构数据（orgId 取自登录态，不接受前端传参） */
 router.get('/my', requirePerm(PERM.DASHBOARD_ORG), async (req, res) => {
   ok(res, await dashboard.getMyOrgDashboard(req.user!.orgId!));

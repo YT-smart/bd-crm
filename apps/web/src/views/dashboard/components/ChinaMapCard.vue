@@ -3,7 +3,8 @@ import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { NButton, NInput, NSelect, NSkeleton } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
-import { ArrowRight, MapPin, Search } from 'lucide-vue-next';
+import type { ECharts } from 'echarts/core';
+import { ArrowRight, MapPin, Minus, Plus, RotateCcw, Search } from 'lucide-vue-next';
 import { BUSINESS_TYPES, shortProvinceName, type MapSearchResult, type ProvinceStat } from '@bdcrm/shared';
 import { dashboardApi } from '@/api';
 import { CITY_COORDS } from '@/utils/cityCoords';
@@ -37,7 +38,54 @@ async function loadMap() {
     mapError.value = e instanceof Error ? e.message : '地图数据加载失败';
   }
 }
-onMounted(loadMap);
+onMounted(() => {
+  loadMap();
+  loadAllCities();
+});
+
+/* ---------- 全部机构的校区城市：平时也标在地图上，放大后能看清机构周边 ---------- */
+const allCities = shallowRef<MapSearchResult['cities']>([]);
+async function loadAllCities() {
+  try {
+    allCities.value = (await dashboardApi.map({})).cities;
+  } catch {
+    /* 标点加载失败不影响省份分布 */
+  }
+}
+
+/* ---------- 缩放：滚轮 / 拖动 / 按钮；放大后显示省名、周边城市 ---------- */
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 14;
+/** 当前缩放和中心点不放进响应式里，拖动时不重算 option；只有跨档时才重算 */
+const view: { zoom: number; center?: number[] } = { zoom: 1 };
+/** 0：全国；1：显示省名和城市名；2：再显示周边所有城市 */
+const zoomTier = ref(0);
+const tierOf = (z: number) => (z >= 3.2 ? 2 : z >= 1.8 ? 1 : 0);
+const resetKey = ref(0);
+let chart: ECharts | null = null;
+
+function onChartReady(c: ECharts) {
+  chart = c;
+  c.on('georoam', () => {
+    const g = (c.getOption().geo as { zoom: number; center?: number[] }[])[0];
+    view.zoom = g.zoom;
+    view.center = g.center;
+    const t = tierOf(g.zoom);
+    if (t !== zoomTier.value) zoomTier.value = t;
+  });
+}
+function zoomBy(f: number) {
+  if (!chart) return;
+  view.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.zoom * f));
+  chart.setOption({ geo: { zoom: view.zoom } });
+  zoomTier.value = tierOf(view.zoom);
+}
+function resetZoom() {
+  view.zoom = 1;
+  view.center = undefined;
+  zoomTier.value = 0;
+  resetKey.value++;
+}
 
 /* ---------- 地图筛选：机构名称 / 业务类型 → 校区城市标点 ---------- */
 const keyword = ref('');
@@ -81,6 +129,20 @@ const cityPoints = computed(() =>
     .map((c) => ({ name: c.name, value: [...CITY_COORDS[c.name], c.count], orgs: c.orgs, count: c.count })),
 );
 const maxCityCount = computed(() => Math.max(1, ...cityPoints.value.map((c) => c.count)));
+/** 平时的机构城市标点 */
+const orgCityPoints = computed(() =>
+  allCities.value
+    .filter((c) => CITY_COORDS[c.name])
+    .map((c) => ({ name: c.name, value: [...CITY_COORDS[c.name], c.count], orgs: c.orgs, count: c.count })),
+);
+const maxOrgCityCount = computed(() => Math.max(1, ...orgCityPoints.value.map((c) => c.count)));
+/** 放大后显示的周边城市（没有机构的），帮助判断机构附近是哪里 */
+const refCityPoints = computed(() => {
+  const has = new Set((filtering.value ? cityPoints.value : orgCityPoints.value).map((c) => c.name));
+  return Object.entries(CITY_COORDS)
+    .filter(([n]) => !has.has(n))
+    .map(([name, xy]) => ({ name, value: xy }));
+});
 
 const totalOrgs = computed(() => props.provinces.reduce((s, p) => s + p.count, 0));
 const coveredProvinces = computed(() => props.provinces.filter((p) => p.count > 0).length);
@@ -105,6 +167,7 @@ function orgNames(t: ChartTheme, names: string[], total: number) {
 }
 
 const option = computed<EChartsOption>(() => {
+  void resetKey.value; // 点「复位」时重建 option
   const t = theme.value;
   const f = filtering.value && result.value;
   return {
@@ -112,9 +175,10 @@ const option = computed<EChartsOption>(() => {
       ...tooltipBase(t),
       trigger: 'item',
       formatter: (params: unknown) => {
-        const p = params as { name: string; seriesType?: string; data?: { orgs?: string[]; count?: number } };
+        const p = params as { name: string; seriesType?: string; seriesId?: string; data?: { orgs?: string[]; count?: number } };
         if (!p.name) return '';
         const title = `<div style="font-weight:600;font-size:13px;margin-bottom:6px">${escapeHtml(p.name)}</div>`;
+        if (p.seriesId === 'ref') return `${title}<div style="color:${t.text3}">这里暂无合作机构的校区</div>`;
         // 筛选模式：城市标点 / 省份
         if (p.seriesType === 'effectScatter' || p.seriesType === 'scatter') {
           const d = p.data!;
@@ -170,11 +234,15 @@ const option = computed<EChartsOption>(() => {
     },
     geo: {
       map: 'china',
-      roam: false,
-      layoutCenter: ['52%', '58%'],
-      layoutSize: '118%',
+      roam: true,
+      scaleLimit: { min: MIN_ZOOM, max: MAX_ZOOM },
+      zoom: view.zoom,
+      ...(view.center ? { center: view.center } : {}),
+      layoutCenter: ['52%', '56%'],
+      layoutSize: '112%',
       selectedMode: false,
-      label: { show: false },
+      // 放大后显示省名
+      label: { show: zoomTier.value >= 1, color: t.text3, fontSize: 11 },
       itemStyle: { areaColor: t.mapEmpty, borderColor: t.mapBorder, borderWidth: 0.8 },
       emphasis: {
         label: { show: true, color: t.dark ? '#fff' : t.ink, fontSize: 11, fontWeight: 600 },
@@ -206,6 +274,35 @@ const option = computed<EChartsOption>(() => {
         zlevel: 1,
         data: f ? cityPoints.value : [],
       },
+      {
+        // 平时：所有机构的校区城市
+        id: 'orgCities',
+        type: 'scatter',
+        coordinateSystem: 'geo',
+        symbolSize: (v: number[]) => 6 + Math.round((v[2] / maxOrgCityCount.value) * 10) + zoomTier.value * 2,
+        itemStyle: { color: t.accent, borderColor: '#fff', borderWidth: 1, shadowBlur: 4, shadowColor: 'rgba(0,0,0,.2)' },
+        label: {
+          show: zoomTier.value >= 1,
+          formatter: (p: { name: string; data: { count: number } }) => `${p.name} ${p.data.count}`,
+          position: 'right',
+          fontSize: 11,
+          fontWeight: 600,
+          color: t.dark ? '#fff' : t.ink,
+        },
+        zlevel: 1,
+        data: f ? [] : orgCityPoints.value,
+      },
+      {
+        // 放大后：周边没有机构的城市，灰色小点
+        id: 'ref',
+        type: 'scatter',
+        coordinateSystem: 'geo',
+        symbolSize: 4,
+        silent: false,
+        itemStyle: { color: t.text3, opacity: 0.6 },
+        label: { show: zoomTier.value >= 2, formatter: '{b}', position: 'right', fontSize: 10, color: t.text3 },
+        data: zoomTier.value >= 1 ? refCityPoints.value : [],
+      },
     ],
   } as EChartsOption;
 });
@@ -215,8 +312,13 @@ function goProvince(name: string) {
 }
 
 function onMapClick(params: unknown) {
-  const p = params as { componentType?: string; seriesType?: string; name?: string };
-  if (!p.name) return;
+  const p = params as { componentType?: string; seriesType?: string; seriesId?: string; name?: string };
+  if (!p.name || p.seriesId === 'ref') return;
+  // 平时的机构城市标点：看在这个城市有校区的机构
+  if (p.seriesId === 'orgCities') {
+    router.push({ name: 'orgs', query: { city: p.name } });
+    return;
+  }
   // 筛选模式下点城市 / 省份：带上关键词跳到机构列表
   if (p.seriesType === 'effectScatter') {
     router.push({ name: 'orgs', query: { city: p.name, keyword: keyword.value.trim() || undefined, businessType: businessType.value ?? undefined } });
@@ -235,7 +337,7 @@ function onMapClick(params: unknown) {
         <div class="card-title">机构地区分布</div>
         <div class="card-sub">
           覆盖 <span class="num">{{ coveredProvinces }}</span> 个省级行政区，共
-          <span class="num">{{ num(totalOrgs) }}</span> 家机构 · 悬停查看数据，点击省份查看机构
+          <span class="num">{{ num(totalOrgs) }}</span> 家机构 · 可放大查看机构周边的城市，点城市圆点看机构
         </div>
       </div>
       <button id="map-view-all" class="link-btn" @click="router.push('/orgs')">
@@ -272,7 +374,14 @@ function onMapClick(params: unknown) {
           <span>{{ mapError }}</span>
           <NButton size="small" secondary @click="loadMap">重试</NButton>
         </div>
-        <EChart v-else :option="option" @chart-click="onMapClick" />
+        <template v-else>
+          <EChart :option="option" @chart-click="onMapClick" @ready="onChartReady" />
+          <div class="zoom-ctl">
+            <button id="map-zoom-in" title="放大" @click="zoomBy(1.6)"><Plus :size="15" /></button>
+            <button id="map-zoom-out" title="缩小" @click="zoomBy(1 / 1.6)"><Minus :size="15" /></button>
+            <button id="map-zoom-reset" title="复位" @click="resetZoom"><RotateCcw :size="14" /></button>
+          </div>
+        </template>
       </div>
 
       <div v-if="filtering" class="rank">
@@ -315,6 +424,10 @@ function onMapClick(params: unknown) {
 </template>
 
 <style scoped>
+#map-view-all {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .map-card {
   display: flex;
   flex-direction: column;
@@ -325,11 +438,42 @@ function onMapClick(params: unknown) {
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 8px;
   padding: 4px 20px 16px 8px;
-  min-height: 420px;
+  min-height: 600px;
 }
 .map-wrap {
   position: relative;
-  min-height: 420px;
+  min-height: 600px;
+  overflow: hidden;
+}
+.zoom-ctl {
+  position: absolute;
+  right: 8px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+.zoom-ctl button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.zoom-ctl button + button {
+  border-top: 1px solid var(--border);
+}
+.zoom-ctl button:hover {
+  background: var(--neutral-soft);
+  color: var(--brand);
 }
 .map-skeleton {
   position: absolute;
@@ -492,6 +636,10 @@ function onMapClick(params: unknown) {
 @media (max-width: 720px) {
   .map-body {
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .map-wrap {
+    min-height: 420px;
   }
   .rank {
     border-left: 0;

@@ -17,7 +17,7 @@ import { useAuthStore } from '@/stores/auth';
 
 /**
  * 机构完整资料：卡片式分块，左侧主信息、右侧联系方式与合作数据，所有信息一屏内纵向浏览。
- * 合作信息、跟进记录、标签属于内部字段，机构账号不展示。
+ * 合作信息、流量顾问成交记录、标签属于内部字段，机构账号不展示。
  */
 const props = withDefaults(
   defineProps<{ org: OrgDetail; canEdit?: boolean; internal?: boolean }>(),
@@ -25,7 +25,7 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ refresh: [] }>();
 const auth = useAuthStore();
-/** 合作信息（结算、合同、收款账户）只给管理员看；评价员工和管理员都能看能写 */
+/** 产品单独佣金、成交、合作数据只给管理员；合作信息卡片员工也能看（只读） */
 const canSeeCooperation = auth.can(PERM.ORG_COOPERATION);
 /** 跟钱有关的（佣金比例、成交记录、合作数据）：管理员；机构账号看自己的 */
 const canSeeMoney = computed(() => !props.internal || canSeeCooperation);
@@ -81,8 +81,8 @@ defineExpose({ openEdit });
       />
       <OrgStatsCard v-if="canSeeMoney" :stats="org.stats" />
       <OrgReviewsCard v-if="internal && canReview" :org-id="org.id" />
-      <OrgCooperationTab v-if="internal && canSeeCooperation" :org="org" :can-edit="canEdit" @updated="emit('refresh')" />
-      <OrgFollowUpsTab v-if="internal" :org-id="org.id" :can-edit="canEdit" />
+      <OrgCooperationTab v-if="internal" :org="org" :can-edit="canEdit && canSeeCooperation" @updated="emit('refresh')" />
+      <OrgFollowUpsTab v-if="internal" :org-id="org.id" />
     </div>
 
     <NDrawer v-model:show="showEdit" :width="760" :auto-focus="false">

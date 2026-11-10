@@ -100,19 +100,37 @@ const businessRow = rowModel('businessType');
 const statusRow = rowModel('status');
 const levelRow = rowModel('level');
 
-/** 城市 / 国家：只平铺至少 N 家机构填了的，随录入的机构自动变化；其他的从「更多」里选 */
+/**
+ * 城市 / 国家：只列固定的常用项（带机构数），其他的从后面的搜索框里选。
+ */
+const MAIN_CITIES = ['北京', '上海', '深圳', '广州', '杭州', '成都', '重庆', '武汉'];
+const MAIN_COUNTRIES: { label: string; value: string }[] = [
+  { label: '美国', value: '美国' },
+  { label: '英国', value: '英国' },
+  { label: '香港', value: '中国香港' },
+  { label: '加拿大', value: '加拿大' },
+  { label: '新加坡', value: '新加坡' },
+  { label: '澳洲', value: '澳大利亚' },
+  { label: '新西兰', value: '新西兰' },
+];
 const facets = ref<OrgFilterFacets | null>(null);
 orgApi.filterFacets().then((f) => (facets.value = f)).catch(() => {});
 
-function facetOptions(list: { name: string; count: number }[] | undefined, current: string | null): FilterOption[] {
-  const opts: FilterOption[] = (list ?? []).map((c) => ({ label: c.name, value: c.name, count: c.count }));
-  // 从「更多」或地图选的不在常用里，也显示成选中的按钮
-  if (current && !opts.some((o) => o.value === current)) opts.unshift({ label: current, value: current });
+function facetOptions(
+  main: { label: string; value: string }[],
+  list: { name: string; count: number }[] | undefined,
+  current: string | null,
+): FilterOption[] {
+  const count = new Map((list ?? []).map((c) => [c.name, c.count]));
+  const opts: FilterOption[] = main.map((m) => ({ ...m, count: count.get(m.value) }));
+  // 从搜索框或地图选的不在常用里，也显示成选中的按钮
+  if (current && !opts.some((o) => o.value === current)) opts.push({ label: current, value: current });
   return opts;
 }
-const cityFacetOptions = computed(() => facetOptions(facets.value?.cities, filters.city));
-const countryFacetOptions = computed(() => facetOptions(facets.value?.countries, filters.country));
-const facetTip = computed(() => `至少 ${facets.value?.min ?? 5} 家机构填了的会显示在这里`);
+const cityFacetOptions = computed(() =>
+  facetOptions(MAIN_CITIES.map((c) => ({ label: c, value: c })), facets.value?.cities, filters.city),
+);
+const countryFacetOptions = computed(() => facetOptions(MAIN_COUNTRIES, facets.value?.countries, filters.country));
 
 const businessRowOptions = computed<FilterOption[]>(() => {
   const opts: FilterOption[] = businessTypeOptions.map((o) => ({ ...o }));
@@ -270,7 +288,7 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
   {
     title: '机构名称',
     key: 'name',
-    width: 260,
+    width: 230,
     sorter: true,
     sortOrder: sort.value?.key === 'name' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
     render: (r) =>
@@ -279,21 +297,35 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
         h(
           'div',
           { class: 'org-meta ellipsis' },
-          [r.businessTypes.slice(0, 2).join(' / '), ...r.tags.slice(0, 1)].filter(Boolean).join(' · ') || '--',
+          r.tags.slice(0, 2).join(' · ') || '--',
         ),
       ]),
   },
   {
+    title: '业务类型',
+    key: 'businessTypes',
+    width: 150,
+    render: (r) => {
+      const list = r.businessTypes ?? [];
+      if (!list.length) return h('span', { class: 'text-3' }, '--');
+      const MAX = 3;
+      return h('div', { class: 'country-cell', title: list.join('、') }, [
+        ...list.slice(0, MAX).map((b) => h('span', { class: ['biz-chip', { hit: b === filters.businessType }] }, b)),
+        list.length > MAX ? h('span', { class: 'country-more' }, `+${list.length - MAX}`) : null,
+      ]);
+    },
+  },
+  {
     title: '城市',
     key: 'region',
-    minWidth: 170,
+    width: 132,
     render: (r) => {
       // 总部城市在前，其余校区城市依次列出；点城市直接筛选该城市的机构
       let cities = [...new Set([r.city, ...(r.officeCities ?? [])].filter((c): c is string => !!c))];
       // 正在筛选的城市排到最前，避免被折叠进 +n
       if (filters.city && cities.includes(filters.city)) cities = [filters.city, ...cities.filter((c) => c !== filters.city)];
       if (!cities.length) return h('span', { class: 'text-3' }, r.province ? shortProvinceName(r.province) : '--');
-      const MAX = 4;
+      const MAX = 3;
       return h('div', { class: 'city-cell', title: cities.join('、') }, [
         ...cities.slice(0, MAX).map((c) =>
           h(
@@ -316,7 +348,7 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
   {
     title: '主营国家',
     key: 'countries',
-    minWidth: 200,
+    minWidth: 220,
     render: (r) => {
       const list = r.countries ?? [];
       if (!list.length) return h('span', { class: 'text-3' }, '--');
@@ -404,43 +436,41 @@ const pagination = computed(() => ({
   <div class="page">
     <!-- 筛选面板 -->
     <div class="card filter-card rise-in">
+      <FilterRow v-model="businessRow" label="业务类型" :options="businessRowOptions" single>
+        <NSelect
+          id="org-filter-business"
+          :value="null"
+          :options="[]"
+          placeholder="搜索/输入类型"
+          filterable
+          tag
+          size="small"
+          class="more-sel"
+          @update:value="(v: string | null) => v && (filters.businessType = v.trim().slice(0, BUSINESS_TYPE_MAX_LEN) || null)"
+        />
+      </FilterRow>
       <FilterRow v-model="cityRow" label="城市" :options="cityFacetOptions" single>
         <NSelect
           id="org-filter-city"
           :value="null"
           :options="cityOptions"
-          placeholder="更多城市"
+          placeholder="搜索城市"
           filterable
           size="small"
           class="more-sel"
           @update:value="(v: string | null) => v && (filters.city = v)"
         />
-        <span v-if="facets && !facets.cities.length" class="facet-tip text-3">{{ facetTip }}</span>
       </FilterRow>
       <FilterRow v-model="countryRow" label="覆盖国家" :options="countryFacetOptions" single>
         <NSelect
           id="org-filter-country"
           :value="null"
           :options="countryOptions"
-          placeholder="更多国家/地区"
+          placeholder="搜索国家/地区"
           filterable
           size="small"
           class="more-sel"
           @update:value="(v: string | null) => v && (filters.country = v)"
-        />
-        <span v-if="facets && !facets.countries.length" class="facet-tip text-3">{{ facetTip }}</span>
-      </FilterRow>
-      <FilterRow v-model="businessRow" label="业务类型" :options="businessRowOptions" single>
-        <NSelect
-          id="org-filter-business"
-          :value="null"
-          :options="[]"
-          placeholder="输入其他类型"
-          filterable
-          tag
-          size="small"
-          class="more-sel"
-          @update:value="(v: string | null) => v && (filters.businessType = v.trim().slice(0, BUSINESS_TYPE_MAX_LEN) || null)"
         />
       </FilterRow>
       <FilterRow v-model="statusRow" label="合作状态" :options="statusOptions" single />
@@ -503,10 +533,6 @@ const pagination = computed(() => ({
 }
 .more-sel {
   width: 150px;
-}
-.facet-tip {
-  align-self: center;
-  font-size: 12px;
 }
 .filter-foot {
   display: flex;
@@ -587,7 +613,7 @@ const pagination = computed(() => ({
 }
 :deep(.org-cell) {
   line-height: 1.35;
-  max-width: 228px;
+  max-width: 198px;
 }
 :deep(.org-name) {
   font-weight: 500;
@@ -646,6 +672,19 @@ const pagination = computed(() => ({
   color: var(--brand);
 }
 :deep(.city-chip.hit) {
+  background: var(--brand);
+  color: #fff;
+}
+:deep(.biz-chip) {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--brand-soft-2);
+  color: var(--brand);
+  white-space: nowrap;
+}
+:deep(.biz-chip.hit) {
   background: var(--brand);
   color: #fff;
 }

@@ -7,7 +7,7 @@ import type { EChartsOption } from '@/plugins/echarts';
 import { tooltipBase, useChartTheme } from '@/composables/useChartTheme';
 import { money, monthLabel, num } from '@/utils/format';
 
-const props = defineProps<{ data: TrendPoint[]; loading?: boolean }>();
+const props = defineProps<{ data: TrendPoint[]; loading?: boolean; title?: string }>();
 const theme = useChartTheme();
 
 const totals = computed(() => ({
@@ -103,7 +103,7 @@ const option = computed<EChartsOption>(() => {
   <div class="card">
     <div class="card-header">
       <div>
-        <div class="card-title">成交额与佣金趋势</div>
+        <div class="card-title">{{ title ?? '成交额与佣金趋势' }}</div>
         <div class="card-sub">
           近 12 个月 · 成交 <span class="num">{{ num(totals.count) }}</span> 笔 · 成交额
           <span class="num">{{ money(totals.amount) }}</span> · 佣金 <span class="num">{{ money(totals.commission) }}</span>

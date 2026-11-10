@@ -73,25 +73,34 @@ export const SETTLE_CYCLE_LABEL: Record<SettleCycle, string> = {
 export const ORG_LEVELS = ['A', 'B', 'C'] as const;
 export type OrgLevel = (typeof ORG_LEVELS)[number];
 
-/** 机构附件分类 */
+/** 机构附件分类（按这个顺序显示） */
 export const AttachmentCategory = {
-  LICENSE: 'LICENSE',
   INTRO: 'INTRO',
+  MANUAL: 'MANUAL',
+  SERVICE: 'SERVICE',
   CASE: 'CASE',
+  REVIEW: 'REVIEW',
+  LICENSE: 'LICENSE',
+  OTHER: 'OTHER',
+  /** 以下两类已不再提供上传，只用来显示以前上传的文件 */
   QUALIFICATION: 'QUALIFICATION',
   CONTRACT: 'CONTRACT',
-  OTHER: 'OTHER',
 } as const;
 export type AttachmentCategory = (typeof AttachmentCategory)[keyof typeof AttachmentCategory];
 
 export const ATTACHMENT_CATEGORY_LABEL: Record<AttachmentCategory, string> = {
-  LICENSE: '营业执照',
   INTRO: '机构介绍',
+  MANUAL: '产品手册',
+  SERVICE: '服务细则',
   CASE: '成功案例',
+  REVIEW: '好评截图',
+  LICENSE: '营业执照',
+  OTHER: '其他',
   QUALIFICATION: '资质证书',
   CONTRACT: '合同协议',
-  OTHER: '其他',
 };
+/** 上传时可选的分类 */
+export const ATTACHMENT_UPLOAD_CATEGORIES: AttachmentCategory[] = ['INTRO', 'MANUAL', 'SERVICE', 'CASE', 'REVIEW', 'LICENSE', 'OTHER'];
 
 /** 单个附件大小上限（MB） */
 export const ATTACHMENT_MAX_MB = 20;
@@ -100,12 +109,14 @@ export const ATTACHMENT_MAX_MB = 20;
  * 常用业务类型（下拉里的快捷选项）。机构 / 产品还可以自定义输入其他类型，
  * 所以库里存的是任意字符串，这里只是推荐项。
  */
-export const BUSINESS_TYPES = ['留学', '语培', '竞赛', '科研', '求职', '公益'] as const;
+export const BUSINESS_TYPES = ['留学', '语培', '竞赛', '科研', '求职', '公益', '作品集'] as const;
 /** 自定义业务类型的长度上限 */
 export const BUSINESS_TYPE_MAX_LEN = 20;
 
 /** 产品推荐级别：1 级为主推，数字越小越靠前 */
 export const PRODUCT_LEVELS = [1, 2, 3, 4] as const;
+/** 每家机构最多几个主推（1 级）产品 */
+export const MAX_MAIN_PRODUCTS = 2;
 export const PRODUCT_LEVEL_LABEL: Record<number, string> = { 1: '1 级 · 主推', 2: '2 级', 3: '3 级', 4: '4 级' };
 
 /**

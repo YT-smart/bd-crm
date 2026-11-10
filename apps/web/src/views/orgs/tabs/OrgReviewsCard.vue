@@ -85,7 +85,7 @@ function handleDelete(r: OrgReviewItem) {
         id="review-input"
         v-model:value="draft"
         type="textarea"
-        placeholder="写下对这家机构的评价，如服务质量、配合度、学生反馈等（机构看不到）"
+        placeholder="写下对这家机构的评价，如服务质量、配合度、学生反馈等（仅内部可见）"
         :autosize="{ minRows: 2, maxRows: 6 }"
         maxlength="1000"
         show-count
