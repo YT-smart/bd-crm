@@ -41,6 +41,10 @@ function buildDealWhere(q: DealListQuery, scope: DealScope = {}, withStatus = tr
   const where: Prisma.DealWhereInput = { AND: [scopeWhere(scope), { status: { in: [...APPROVED] } }] };
   if (!scope.orgId && q.orgId) where.orgId = q.orgId;
   if (withStatus && q.status) where.status = q.status;
+  // 录入方 / 录入人（路由层只对管理员放行这两个参数）
+  if (q.creatorType === 'ORG') where.createdBy = { role: 'ORG' };
+  else if (q.creatorType === 'STAFF') where.createdBy = { role: { in: ['STAFF', 'ADMIN'] } };
+  if (q.creatorId) where.createdById = q.creatorId;
   const range = dayRange(q.startDate, q.endDate);
   if (range) where.dealAt = range;
   if (q.keyword) {
@@ -75,7 +79,7 @@ export async function listDeals(
       include: {
         org: { select: { name: true } },
         product: { select: { name: true } },
-        createdBy: { select: { name: true } },
+        createdBy: { select: { name: true, role: true } },
         auditedBy: { select: { name: true } },
         settledBy: { select: { name: true } },
       },
@@ -100,6 +104,7 @@ export async function listDeals(
       status: d.status,
       rejectReason: d.rejectReason,
       createdByName: d.createdBy.name,
+      createdByRole: d.createdBy.role,
       auditedByName: d.auditedBy?.name ?? null,
       auditedAt: d.auditedAt?.toISOString() ?? null,
       settledAt: d.settledAt?.toISOString() ?? null,

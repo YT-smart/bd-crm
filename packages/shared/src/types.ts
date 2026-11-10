@@ -464,6 +464,8 @@ export interface DealListItem {
   status: DealStatus;
   rejectReason: string | null;
   createdByName: string;
+  /** 录入人角色：ORG 为机构录入，其余为员工录入 */
+  createdByRole: Role;
   auditedByName: string | null;
   auditedAt: string | null;
   settledAt: string | null;
@@ -483,6 +485,10 @@ export interface DealListQuery {
   endDate?: string;
   sort?: 'dealAt' | 'amount' | 'commission' | 'createdAt';
   order?: 'asc' | 'desc';
+  /** 录入方（仅管理员可用）：机构录入 / 员工录入（含管理员） */
+  creatorType?: 'ORG' | 'STAFF';
+  /** 指定录入人（仅管理员可用） */
+  creatorId?: string;
 }
 
 export interface DealCreateInput {

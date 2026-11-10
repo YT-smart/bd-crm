@@ -32,7 +32,7 @@ function dealScope(req: Request): DealScope {
 /* ============ 统计概览 ============ */
 
 router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
-  ok(res, await getDealSummary(querySchema.parse(req.query), dealScope(req)));
+  ok(res, await getDealSummary(parseQuery(req), dealScope(req)));
 });
 
 /* 成交概览：成交额、佣金、成交率等经营数据，仅管理员 */
@@ -60,10 +60,22 @@ const querySchema = z.object({
   endDate: z.string().regex(DAY_RE, '日期格式应为 YYYY-MM-DD').optional(),
   sort: z.enum(['dealAt', 'amount', 'commission', 'createdAt']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
+  creatorType: z.enum(['ORG', 'STAFF']).optional(),
+  creatorId: z.string().cuid().optional(),
 });
 
-router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
+/** 解析查询条件；按录入方 / 录入人筛选只给能看全部成交的管理员 */
+function parseQuery(req: Request) {
   const q = querySchema.parse(req.query);
+  if (!req.user!.permissions.includes(PERM.DEAL_VIEW_ALL)) {
+    delete q.creatorType;
+    delete q.creatorId;
+  }
+  return q;
+}
+
+router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
+  const q = parseQuery(req);
   const rows = await exportDeals(q, dealScope(req));
 
   const data = rows.map((d) => ({
@@ -86,7 +98,7 @@ router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
 /* ============ 列表 ============ */
 
 router.get('/', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
-  const q = querySchema.parse(req.query);
+  const q = parseQuery(req);
   ok(res, await listDeals(q, dealScope(req)));
 });
 

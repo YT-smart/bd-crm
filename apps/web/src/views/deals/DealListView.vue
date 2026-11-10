@@ -2,7 +2,7 @@
 import { computed, h, reactive, ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  NDataTable, NInput, NDatePicker, NModal,
+  NDataTable, NInput, NDatePicker, NModal, NSelect,
   NForm, NFormItem, useMessage, useDialog,
   type DataTableColumns, type DataTableRowKey,
 } from 'naive-ui';
@@ -12,7 +12,7 @@ import {
   DealStatus, DEAL_STATUS_LABEL, PERM,
   type DealListItem, type DealListQuery, type DealSummary,
 } from '@bdcrm/shared';
-import { dealApi } from '@/api';
+import { dealApi, orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import DealCreateModal from '@/components/DealCreateModal.vue';
 import FilterRow, { type FilterOption } from '@/components/FilterRow.vue';
@@ -33,6 +33,8 @@ const canSettle = computed(() => auth.can('deal:settle'));
 
 /** 员工只能看自己录入的成交，管理员看全部，机构账号看本机构 */
 const ownOnly = computed(() => auth.user?.role === 'STAFF' && !auth.can(PERM.DEAL_VIEW_ALL));
+/** 按录入方 / 录入人筛选（查重复录入）：只有能看全部成交的管理员 */
+const canFilterCreator = computed(() => auth.can(PERM.DEAL_VIEW_ALL));
 
 /* ---------- 筛选 ---------- */
 type Preset = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | 'year';
@@ -68,6 +70,10 @@ const filters = reactive({
   datePreset: null as Preset | null,
   /** 自定义日期范围（和快捷日期二选一） */
   dateRange: rangeFromQuery(),
+  /** 录入方：机构录入 / 员工录入（仅管理员） */
+  creatorType: null as 'ORG' | 'STAFF' | null,
+  /** 指定录入的员工（仅管理员） */
+  creatorId: null as string | null,
   page: 1,
 });
 
@@ -99,6 +105,8 @@ function query(): DealListQuery {
     endDate: activeRange.value?.[1],
     sort: sort.value?.key,
     order: sort.value?.order,
+    creatorType: filters.creatorType ?? undefined,
+    creatorId: filters.creatorId ?? undefined,
   };
 }
 
@@ -135,6 +143,30 @@ const dateRow = computed({
 function onPickRange(v: [number, number] | null) {
   filters.dateRange = v;
   if (v) filters.datePreset = null;
+}
+
+/* 录入人：机构录入 / 员工录入，或在后面选具体员工 */
+const CREATOR_OPTIONS: FilterOption[] = [
+  { label: '机构录入', value: 'ORG' },
+  { label: '员工录入', value: 'STAFF' },
+];
+const creatorRow = computed({
+  get: () => (filters.creatorType ? [filters.creatorType] : []),
+  set: (v: string[]) => {
+    filters.creatorType = (v[0] as 'ORG' | 'STAFF') ?? null;
+    if (filters.creatorType === 'ORG') filters.creatorId = null;
+    if (!v.length) filters.creatorId = null;
+  },
+});
+const staffOptions = ref<{ label: string; value: string }[]>([]);
+function loadStaff() {
+  if (staffOptions.value.length || !canFilterCreator.value) return;
+  orgApi.staffOptions().then((list) => (staffOptions.value = list.map((u) => ({ label: u.name, value: u.id })))).catch(() => {});
+}
+/** 选了具体员工就自动归到「员工录入」 */
+function onPickCreator(id: string | null) {
+  filters.creatorId = id;
+  if (id) filters.creatorType = 'STAFF';
 }
 
 const SORT_OPTIONS: FilterOption[] = [
@@ -183,7 +215,7 @@ async function reload() { await Promise.all([load(), loadSummary()]); }
 
 const debouncedKeyword = useDebounceFn(() => { filters.page = 1; reload(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
-watch(() => [filters.status, filters.datePreset, filters.dateRange], () => {
+watch(() => [filters.status, filters.datePreset, filters.dateRange, filters.creatorType, filters.creatorId], () => {
   filters.page = 1;
   checkedKeys.value = [];
   reload();
@@ -194,7 +226,7 @@ watch(() => [filters.dateRange, filters.datePreset], () => {
 });
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, page: 1 });
+  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, creatorType: null, creatorId: null, page: 1 });
   sort.value = null;
   checkedKeys.value = [];
 }
@@ -335,7 +367,14 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
       render: (r) => h('span', { class: 'num', style: 'font-weight: 600' }, money(r.commission)),
     },
     { title: '状态', key: 'status', width: 100, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
-    { title: '录入人', key: 'createdByName', width: 90, render: (r) => r.createdByName },
+    {
+      title: '录入人', key: 'createdByName', width: 120,
+      // 机构录入的加个标记，方便和员工录入的对照查重
+      render: (r) => h('span', { class: 'creator-cell' }, [
+        r.createdByRole === 'ORG' ? h('span', { class: 'creator-tag' }, '机构') : null,
+        h('span', { class: 'ellipsis', title: r.createdByName }, r.createdByName),
+      ]),
+    },
     {
       title: '录入时间', key: 'createdAt', width: 110, sorter: true,
       sortOrder: sort.value?.key === 'createdAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
@@ -374,10 +413,13 @@ const pagination = computed(() => ({
   prefix: () => `共 ${total.value} 条`,
 }));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || sort.value));
+const hasFilter = computed(
+  () => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || filters.creatorType || filters.creatorId || sort.value),
+);
 
 /* ---------- 初始化 ---------- */
 onMounted(async () => {
+  loadStaff();
   await Promise.all([loadSummary(), load()]);
 });
 </script>
@@ -425,6 +467,19 @@ onMounted(async () => {
           end-placeholder="结束日期"
           class="date-pick"
           @update:value="onPickRange"
+        />
+      </FilterRow>
+      <FilterRow v-if="canFilterCreator" v-model="creatorRow" label="录入人" :options="CREATOR_OPTIONS" single>
+        <NSelect
+          id="deal-creator"
+          :value="filters.creatorId"
+          :options="staffOptions"
+          filterable
+          clearable
+          size="small"
+          placeholder="选择员工"
+          class="creator-sel"
+          @update:value="onPickCreator"
         />
       </FilterRow>
       <FilterRow v-model="sortRow" label="排序" :options="SORT_OPTIONS" single all-label="默认" />
@@ -585,6 +640,17 @@ onMounted(async () => {
 .search { flex: 1; min-width: 200px; max-width: 340px; }
 .sel { width: 200px; }
 .date-pick { width: 260px; }
+.creator-sel { width: 150px; }
+:deep(.creator-cell) { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+:deep(.creator-tag) {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
 .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .table-card { margin-top: 12px; overflow: hidden; }
