@@ -456,19 +456,6 @@ onMounted(async () => {
 
     <!-- 筛选面板 -->
     <div class="card filter-card rise-in" style="animation-delay: 40ms">
-      <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />
-      <FilterRow v-model="dateRow" label="成交日期" :options="DATE_PRESETS" single>
-        <NDatePicker
-          :value="filters.dateRange"
-          type="daterange"
-          clearable
-          size="small"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          class="date-pick"
-          @update:value="onPickRange"
-        />
-      </FilterRow>
       <FilterRow v-if="canFilterCreator" v-model="creatorRow" label="录入人" :options="CREATOR_OPTIONS" single>
         <NSelect
           id="deal-creator"
@@ -480,6 +467,19 @@ onMounted(async () => {
           placeholder="选择员工"
           class="creator-sel"
           @update:value="onPickCreator"
+        />
+      </FilterRow>
+      <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />
+      <FilterRow v-model="dateRow" label="成交日期" :options="DATE_PRESETS" single>
+        <NDatePicker
+          :value="filters.dateRange"
+          type="daterange"
+          clearable
+          size="small"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          class="date-pick"
+          @update:value="onPickRange"
         />
       </FilterRow>
       <FilterRow v-model="sortRow" label="排序" :options="SORT_OPTIONS" single all-label="默认" />
