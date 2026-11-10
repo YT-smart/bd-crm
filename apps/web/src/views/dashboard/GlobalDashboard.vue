@@ -81,8 +81,8 @@ watch(topRange, loadDist);
         <DealTable
           class="span-8 rise-in"
           style="animation-delay: 120ms"
-          title="待审核成交"
-          :sub="summary ? `待审核 ${summary.pendingAuditCount} 笔 · 应收未到账佣金 ${money(summary.receivable.amount)}（${summary.receivable.count} 笔）` : undefined"
+          title="待到账成交"
+          :sub="summary ? `应收未到账佣金 ${money(summary.receivable.amount)}（${summary.receivable.count} 笔）` : undefined"
           :data="lists?.pendingDeals ?? []"
           :loading="loadingStatic"
         />

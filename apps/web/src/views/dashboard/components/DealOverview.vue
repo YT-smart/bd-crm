@@ -70,12 +70,12 @@ const theme = useChartTheme();
 const totals30 = computed(() => {
   const list = data.value?.daily ?? [];
   const count = list.reduce((s, x) => s + x.count, 0);
-  const reports = list.reduce((s, x) => s + x.reports, 0);
+  const settled = list.reduce((s, x) => s + x.settled, 0);
   return {
     count,
-    reports,
+    settled,
     amount: list.reduce((s, x) => s + x.amount, 0),
-    rate: reports ? Math.round((count / reports) * 1000) / 10 : null,
+    rate: count ? Math.round((settled / count) * 1000) / 10 : null,
   };
 });
 
@@ -92,7 +92,7 @@ const option = computed<EChartsOption>(() => {
       itemWidth: 10,
       itemHeight: 10,
       textStyle: { color: t.text3, fontSize: 12 },
-      data: ['成交笔数', '报单笔数', '成交额'],
+      data: ['已结算笔数', '成交笔数', '成交额'],
     },
     tooltip: {
       ...tooltipBase(t),
@@ -108,8 +108,8 @@ const option = computed<EChartsOption>(() => {
         const wd = '日一二三四五六'[new Date(`${x.date}T00:00:00`).getDay()];
         return (
           `<div style="font-weight:600;margin-bottom:4px">${Number(m)} 月 ${Number(dd)} 日 周${wd}</div>` +
-          row('报单', `${x.reports} 笔`) +
           row('成交', `${x.count} 笔`) +
+          row('已结算', `${x.settled} 笔`) +
           row('成交率', x.rate === null ? '--' : `${x.rate}%`) +
           row('成交额', money(x.amount)) +
           row('佣金', money(x.commission))
@@ -133,19 +133,19 @@ const option = computed<EChartsOption>(() => {
     ],
     series: [
       {
-        name: '报单笔数',
+        name: '成交笔数',
         type: 'bar',
         barGap: '-100%',
         barMaxWidth: 18,
-        data: list.map((x) => x.reports),
+        data: list.map((x) => x.count),
         itemStyle: { color: t.brandSoft, borderRadius: [3, 3, 0, 0] },
         z: 1,
       },
       {
-        name: '成交笔数',
+        name: '已结算笔数',
         type: 'bar',
         barMaxWidth: 18,
-        data: list.map((x) => x.count),
+        data: list.map((x) => x.settled),
         itemStyle: { color: t.brand, borderRadius: [3, 3, 0, 0] },
         z: 2,
       },
@@ -205,7 +205,7 @@ const option = computed<EChartsOption>(() => {
               <b class="num">{{ p.cur.rate === null ? '--' : `${p.cur.rate}%` }}</b>
             </div>
           </div>
-          <div class="ov-foot">报单 {{ p.cur.reports }} 笔 · {{ p.cmp }} {{ p.prev.count }} 笔</div>
+          <div class="ov-foot">已结算 {{ p.cur.settled }} 笔 · {{ p.cmp }} {{ p.prev.count }} 笔</div>
         </button>
 
         <div class="card ov-card rate-card">
@@ -227,11 +227,11 @@ const option = computed<EChartsOption>(() => {
           </div>
           <div class="rate-bar"><i :style="{ width: `${data.month.rate ?? 0}%` }" /></div>
           <div class="ov-rows">
-            <div><span>本月</span><b class="num">{{ data.month.count }} / {{ data.month.reports }} 笔</b></div>
+            <div><span>本月</span><b class="num">{{ data.month.settled }} / {{ data.month.count }} 笔</b></div>
             <div><span>累计成交率</span><b class="num">{{ data.all.rate === null ? '--' : `${data.all.rate}%` }}</b></div>
-            <div><span>累计</span><b class="num">{{ num(data.all.count) }} / {{ num(data.all.reports) }} 笔</b></div>
+            <div><span>累计</span><b class="num">{{ num(data.all.settled) }} / {{ num(data.all.count) }} 笔</b></div>
           </div>
-          <div class="ov-foot">成交率 = 已核实成交 ÷ 全部报单</div>
+          <div class="ov-foot">成交率 = 已结算 ÷ 录入的成交</div>
         </div>
       </template>
     </div>
@@ -241,8 +241,8 @@ const option = computed<EChartsOption>(() => {
         <div>
           <div class="card-title">近 30 天成交走势</div>
           <div class="card-sub">
-            报单 <span class="num">{{ num(totals30.reports) }}</span> 笔 · 成交
-            <span class="num">{{ num(totals30.count) }}</span> 笔 · 成交率
+            成交 <span class="num">{{ num(totals30.count) }}</span> 笔 · 已结算
+            <span class="num">{{ num(totals30.settled) }}</span> 笔 · 成交率
             <span class="num">{{ totals30.rate === null ? '--' : `${totals30.rate}%` }}</span> · 成交额
             <span class="num">{{ money(totals30.amount) }}</span>
           </div>

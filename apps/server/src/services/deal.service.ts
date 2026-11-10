@@ -33,11 +33,14 @@ export function scopeWhere(scope: DealScope = {}): Prisma.DealWhereInput {
   return {};
 }
 
-/** 列表 / 导出共用的筛选条件 */
-function buildDealWhere(q: DealListQuery, scope: DealScope = {}): Prisma.DealWhereInput {
-  const where: Prisma.DealWhereInput = { AND: [scopeWhere(scope)] };
+/**
+ * 列表 / 导出 / 统计共用的筛选条件。
+ * 已经没有审核环节：只显示待到账、已结算；以前驳回的记录保留在库中但不再显示。
+ */
+function buildDealWhere(q: DealListQuery, scope: DealScope = {}, withStatus = true): Prisma.DealWhereInput {
+  const where: Prisma.DealWhereInput = { AND: [scopeWhere(scope), { status: { in: [...APPROVED] } }] };
   if (!scope.orgId && q.orgId) where.orgId = q.orgId;
-  if (q.status) where.status = q.status;
+  if (withStatus && q.status) where.status = q.status;
   const range = dayRange(q.startDate, q.endDate);
   if (range) where.dealAt = range;
   if (q.keyword) {
@@ -108,49 +111,43 @@ export async function listDeals(
   };
 }
 
-/* ============ 统计概览 ============ */
+/* ============ 统计概览（跟随筛选条件） ============ */
 
-export async function getDealSummary(scope: DealScope = {}): Promise<DealSummary> {
-  const where = scopeWhere(scope);
+/**
+ * 顶部数字：成交数量、签约金额、佣金、待结算佣金、已结算佣金，按当前筛选（含状态）统计；
+ * byStatus 是忽略状态筛选时各状态的数量，用于状态按钮上的数字。
+ */
+export async function getDealSummary(q: DealListQuery, scope: DealScope = {}): Promise<DealSummary> {
   const groups = await prisma.deal.groupBy({
     by: ['status'],
-    where,
+    where: buildDealWhere(q, scope, false),
     _count: { _all: true },
-    _sum: { commission: true },
+    _sum: { amount: true, commission: true },
   });
-
   const result: DealSummary = {
-    total: 0,
-    pendingAudit: 0,
-    pendingPayment: 0,
-    settled: 0,
-    rejected: 0,
-    pendingPaymentAmount: 0,
+    count: 0,
+    amount: 0,
+    commission: 0,
+    pendingAmount: 0,
     settledAmount: 0,
+    byStatus: { total: 0, [DealStatus.PENDING_PAYMENT]: 0, [DealStatus.SETTLED]: 0 },
   };
-
   for (const g of groups) {
     const cnt = g._count._all;
+    result.byStatus[g.status] = cnt;
+    result.byStatus.total += cnt;
+    if (q.status && g.status !== q.status) continue;
     const com = num(g._sum.commission);
-    result.total += cnt;
-    switch (g.status) {
-      case DealStatus.PENDING_AUDIT:
-        result.pendingAudit = cnt;
-        break;
-      case DealStatus.PENDING_PAYMENT:
-        result.pendingPayment = cnt;
-        result.pendingPaymentAmount = com;
-        break;
-      case DealStatus.SETTLED:
-        result.settled = cnt;
-        result.settledAmount = com;
-        break;
-      case DealStatus.REJECTED:
-        result.rejected = cnt;
-        break;
-    }
+    result.count += cnt;
+    result.amount += num(g._sum.amount);
+    result.commission += com;
+    if (g.status === DealStatus.PENDING_PAYMENT) result.pendingAmount += com;
+    if (g.status === DealStatus.SETTLED) result.settledAmount += com;
   }
-
+  result.amount = round2(result.amount);
+  result.commission = round2(result.commission);
+  result.pendingAmount = round2(result.pendingAmount);
+  result.settledAmount = round2(result.settledAmount);
   return result;
 }
 
@@ -160,12 +157,12 @@ const DAY_MS = 24 * 3600 * 1000;
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function emptyStat(): DealPeriodStat {
-  return { count: 0, amount: 0, commission: 0, reports: 0, rate: null };
+  return { count: 0, amount: 0, commission: 0, settled: 0, rate: null };
 }
 function finish(s: DealPeriodStat): DealPeriodStat {
   s.amount = Math.round(s.amount * 100) / 100;
   s.commission = Math.round(s.commission * 100) / 100;
-  s.rate = s.reports ? Math.round((s.count / s.reports) * 1000) / 10 : null;
+  s.rate = s.count ? Math.round((s.settled / s.count) * 1000) / 10 : null;
   return s;
 }
 
@@ -185,10 +182,10 @@ export async function getDealOverview(now = new Date()): Promise<DealOverview> {
 
   const [rows, allGroups] = await Promise.all([
     prisma.deal.findMany({
-      where: { dealAt: { gte: from, lte: now } },
+      where: { dealAt: { gte: from, lte: now }, status: { in: [...APPROVED] } },
       select: { dealAt: true, status: true, amount: true, commission: true },
     }),
-    prisma.deal.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true, commission: true } }),
+    prisma.deal.groupBy({ by: ['status'], where: { status: { in: [...APPROVED] } }, _count: { _all: true }, _sum: { amount: true, commission: true } }),
   ]);
 
   const inRange = (t: number, start: Date, end: number) => t >= start.getTime() && t < end;
@@ -207,14 +204,12 @@ export async function getDealOverview(now = new Date()): Promise<DealOverview> {
 
   for (const r of rows) {
     const t = r.dealAt.getTime();
-    const approved = APPROVED.includes(r.status);
+    const settled = r.status === DealStatus.SETTLED;
     const add = (s: DealPeriodStat) => {
-      s.reports++;
-      if (approved) {
-        s.count++;
-        s.amount += num(r.amount);
-        s.commission += num(r.commission);
-      }
+      s.count++;
+      s.amount += num(r.amount);
+      s.commission += num(r.commission);
+      if (settled) s.settled++;
     };
     for (const [k, [start, end]] of Object.entries(periods) as [keyof typeof periods, readonly [Date, number]][]) {
       if (inRange(t, start, end)) add(stats[k]);
@@ -225,12 +220,10 @@ export async function getDealOverview(now = new Date()): Promise<DealOverview> {
 
   const all = emptyStat();
   for (const g of allGroups) {
-    all.reports += g._count._all;
-    if (APPROVED.includes(g.status)) {
-      all.count += g._count._all;
-      all.amount += num(g._sum.amount);
-      all.commission += num(g._sum.commission);
-    }
+    all.count += g._count._all;
+    all.amount += num(g._sum.amount);
+    all.commission += num(g._sum.commission);
+    if (g.status === DealStatus.SETTLED) all.settled += g._count._all;
   }
 
   return {
@@ -297,12 +290,13 @@ export async function createDeal(input: CreateDealInput) {
       commission,
       note: input.note ?? null,
       createdById: input.createdById,
-      status: DealStatus.PENDING_AUDIT,
+      // 没有审核环节，录入后直接待到账
+      status: DealStatus.PENDING_PAYMENT,
     },
   });
 }
 
-/* ============ 修改成交（仅待审核/已驳回状态可改） ============ */
+/* ============ 修改成交（到账之前可改） ============ */
 
 export async function updateDeal(
   dealId: string,
@@ -323,8 +317,8 @@ export async function updateDeal(
   if (!deal) throw new AppError(404, '成交记录不存在');
   if (scope.orgId && deal.orgId !== scope.orgId) throw new AppError(403, '无权修改');
   if (scope.userId && deal.createdById !== scope.userId) throw new AppError(403, '只能修改自己录入的成交');
-  if (deal.status !== DealStatus.PENDING_AUDIT && deal.status !== DealStatus.REJECTED) {
-    throw new AppError(400, '只能修改待审核或已驳回的成交记录');
+  if (deal.status !== DealStatus.PENDING_PAYMENT) {
+    throw new AppError(400, '只能修改还没到账的成交记录');
   }
 
   // 产品必须属于该成交所在机构
@@ -360,58 +354,7 @@ export async function updateDeal(
     if (input.commission !== undefined) data.commission = input.commission;
   }
 
-  // 已驳回修改后重新提交为待审核
-  if (deal.status === DealStatus.REJECTED) {
-    data.status = DealStatus.PENDING_AUDIT;
-    data.rejectReason = null;
-  }
-
   return prisma.deal.update({ where: { id: dealId }, data });
-}
-
-/* ============ 审核 ============ */
-
-export async function auditDeal(
-  dealId: string,
-  action: 'approve' | 'reject',
-  auditedById: string,
-  rejectReason?: string,
-) {
-  const deal = await prisma.deal.findUnique({ where: { id: dealId } });
-  if (!deal) throw new AppError(404, '成交记录不存在');
-  if (deal.status !== DealStatus.PENDING_AUDIT) {
-    throw new AppError(400, '只能审核待审核状态的记录');
-  }
-
-  if (action === 'reject' && !rejectReason?.trim()) {
-    throw new AppError(400, '驳回时必须填写原因');
-  }
-
-  // 带状态条件的原子更新，防止两人同时审核同一条
-  const { count } = await prisma.deal.updateMany({
-    where: { id: dealId, status: DealStatus.PENDING_AUDIT },
-    data: {
-      status: action === 'approve' ? DealStatus.PENDING_PAYMENT : DealStatus.REJECTED,
-      auditedById,
-      auditedAt: new Date(),
-      rejectReason: action === 'reject' ? rejectReason!.trim() : null,
-    },
-  });
-  if (!count) throw new AppError(409, '该记录已被其他人处理，请刷新');
-  return (await prisma.deal.findUnique({ where: { id: dealId } }))!;
-}
-
-/** 批量审核通过 */
-export async function batchApprove(dealIds: string[], auditedById: string) {
-  const result = await prisma.deal.updateMany({
-    where: { id: { in: dealIds }, status: DealStatus.PENDING_AUDIT },
-    data: {
-      status: DealStatus.PENDING_PAYMENT,
-      auditedById,
-      auditedAt: new Date(),
-    },
-  });
-  return { updated: result.count };
 }
 
 /* ============ 结算 ============ */

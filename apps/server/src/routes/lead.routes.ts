@@ -186,7 +186,7 @@ router.post('/:id/follows', requirePerm(PERM.LEAD_EDIT), async (req, res) => {
   ok(res, { id: f.id }, 201);
 });
 
-/* ============ 登记签约（生成待审核成交，需录入成交权限） ============ */
+/* ============ 登记签约（生成待到账成交，需录入成交权限） ============ */
 
 const signSchema = z.object({
   orgId: z.string().cuid(),

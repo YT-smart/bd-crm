@@ -7,7 +7,7 @@ import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
 /**
- * 录入成交（生成待审核的成交记录）。
+ * 录入成交（直接生成待到账的成交记录，管理员确认到账即结算）。
  * 管理员可以改佣金比例和金额；员工、机构按合作约定比例自动计算（后端同样强制）。
  * orgId：固定机构（机构详情页、机构账号），不传则可选择。
  */
@@ -101,7 +101,7 @@ async function submit() {
       rate: form.rate,
       commission: form.commission,
     });
-    message.success('成交已录入，等待管理员审核');
+    message.success('成交已录入');
     show.value = false;
     emit('created');
   } catch (e) {

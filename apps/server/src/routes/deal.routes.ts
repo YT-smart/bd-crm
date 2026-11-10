@@ -11,8 +11,6 @@ import {
   getDealOverview,
   createDeal,
   updateDeal,
-  auditDeal,
-  batchApprove,
   settleDeals,
   revokeSettle,
   listOrgOptions,
@@ -34,7 +32,7 @@ function dealScope(req: Request): DealScope {
 /* ============ 统计概览 ============ */
 
 router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
-  ok(res, await getDealSummary(dealScope(req)));
+  ok(res, await getDealSummary(querySchema.parse(req.query), dealScope(req)));
 });
 
 /* 成交概览：成交额、佣金、成交率等经营数据，仅管理员 */
@@ -150,38 +148,6 @@ router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   });
   writeAudit(req, { module: 'deal', action: 'update', targetId: req.params.id, after: input });
   ok(res, { id: req.params.id });
-});
-
-/* ============ 审核（通过 / 驳回） ============ */
-
-const auditSchema = z.object({
-  action: z.enum(['approve', 'reject']),
-  rejectReason: z.string().max(500).optional(),
-});
-
-router.post('/:id/audit', requirePerm(PERM.DEAL_AUDIT), async (req, res) => {
-  const { action, rejectReason } = auditSchema.parse(req.body);
-  const deal = await auditDeal(req.params.id, action, req.user!.id, rejectReason);
-  writeAudit(req, {
-    module: 'deal',
-    action: action === 'approve' ? 'approve' : 'reject',
-    targetId: req.params.id,
-    after: { status: deal.status, rejectReason: deal.rejectReason },
-  });
-  ok(res, { status: deal.status });
-});
-
-/* ============ 批量审核 ============ */
-
-const batchApproveSchema = z.object({
-  dealIds: z.array(z.string().cuid()).min(1).max(100),
-});
-
-router.post('/batch-approve', requirePerm(PERM.DEAL_AUDIT), async (req, res) => {
-  const { dealIds } = batchApproveSchema.parse(req.body);
-  const result = await batchApprove(dealIds, req.user!.id);
-  writeAudit(req, { module: 'deal', action: 'batchApprove', targetName: `${result.updated} 条` });
-  ok(res, result);
 });
 
 /* ============ 结算（仅管理员） ============ */

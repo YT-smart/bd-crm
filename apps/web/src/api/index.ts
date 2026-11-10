@@ -4,7 +4,6 @@ import type {
   DashboardLists,
   DashboardRange,
   DashboardSummary,
-  DealAuditInput,
   DealCreateInput,
   DealListItem,
   DealListQuery,
@@ -144,7 +143,7 @@ export const shareApi = {
 };
 
 export const dealApi = {
-  summary: () => http.get<DealSummary>('/deals/summary'),
+  summary: (q: DealListQuery) => http.get<DealSummary>('/deals/summary', { ...q }),
   overview: () => http.get<DealOverview>('/deals/overview'),
   list: (q: DealListQuery) => http.get<PageResult<DealListItem>>('/deals', { ...q }),
   orgOptions: () => http.get<OrgOption[]>('/deals/org-options'),
@@ -152,9 +151,6 @@ export const dealApi = {
 
   create: (data: DealCreateInput) => http.post<{ id: string }>('/deals', data),
   update: (id: string, data: DealUpdateInput) => http.put<{ id: string }>(`/deals/${id}`, data),
-
-  audit: (id: string, data: DealAuditInput) => http.post<{ status: string }>(`/deals/${id}/audit`, data),
-  batchApprove: (dealIds: string[]) => http.post<{ updated: number }>('/deals/batch-approve', { dealIds }),
 
   settle: (data: DealSettleInput) => http.post<{ updated: number }>('/deals/settle', data),
   revokeSettle: (id: string, reason: string) =>

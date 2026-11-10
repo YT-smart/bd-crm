@@ -396,10 +396,10 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
     sortOrder: sort.value?.key === 'dealRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
     render: (r) =>
       r.dealRate === null
-        ? h('span', { class: 'text-3', title: '暂无报单' }, '--')
-        : h('div', { class: 'rate-cell', title: `已核实成交 ${r.dealCount} 笔 / 报单 ${r.reportCount} 笔` }, [
+        ? h('span', { class: 'text-3', title: '暂无成交' }, '--')
+        : h('div', { class: 'rate-cell', title: `已结算 ${r.settledCount} 笔 / 录入 ${r.dealCount} 笔` }, [
             h('span', { class: ['num', 'rate-val', r.dealRate >= 60 ? 'good' : r.dealRate < 30 ? 'low' : ''] }, `${r.dealRate.toFixed(1)}%`),
-            h('span', { class: 'rate-sub num' }, `${r.dealCount}/${r.reportCount}`),
+            h('span', { class: 'rate-sub num' }, `${r.settledCount}/${r.dealCount}`),
           ]),
   },
   {

@@ -163,7 +163,7 @@ const signRate = computed(() => {
         class="span-8 rise-in"
         style="animation-delay: 240ms"
         title="我最近录入的成交"
-        :sub="data ? `待审核 ${data.pendingAudit} 笔 · 已驳回 ${data.rejected} 笔` : undefined"
+        :sub="data ? `待到账 ${data.receivable.count} 笔 · 佣金 ${money(data.receivable.amount)}` : undefined"
         :data="data?.recentDeals ?? []"
         :loading="first"
       />

@@ -60,7 +60,7 @@ async function addFollow() {
   }
 }
 
-/* ---------- 登记签约 → 生成待审核成交 ---------- */
+/* ---------- 登记签约 → 生成待到账成交 ---------- */
 const showSign = ref(false);
 const orgOptions = ref<OrgOption[]>([]);
 const sign = reactive({
@@ -112,7 +112,7 @@ async function submitSign() {
       commission: sign.commission,
       note: sign.note.trim() || null,
     });
-    message.success('签约已登记，已生成待审核的成交记录');
+    message.success('签约已登记，已生成成交记录');
     showSign.value = false;
     await load();
     emit('changed');
@@ -202,7 +202,7 @@ const join = (arr: string[]) => (arr.length ? arr.join('、') : '--');
   </NDrawer>
 
   <NModal v-model:show="showSign" preset="card" title="登记签约" style="max-width: 540px">
-    <p class="text-3 sign-tip">登记后会生成一条「待审核」的成交记录，线索状态改为已签约。</p>
+    <p class="text-3 sign-tip">登记后会生成一条「待到账」的成交记录，线索状态改为已签约。</p>
     <NForm label-placement="left" label-width="92" :show-feedback="false" class="sign-form">
       <NFormItem label="签约机构" required>
         <NSelect v-model:value="sign.orgId" :options="orgOptions.map((o) => ({ label: o.name, value: o.id }))" filterable placeholder="选择机构" />

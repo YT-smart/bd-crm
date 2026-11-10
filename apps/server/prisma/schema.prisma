@@ -193,7 +193,7 @@ model Deal {
   amount       Decimal    @db.Decimal(12, 2)
   rate         Decimal    @db.Decimal(5, 2)
   commission   Decimal    @db.Decimal(12, 2)
-  status       DealStatus @default(PENDING_AUDIT)
+  status       DealStatus @default(PENDING_PAYMENT)
   rejectReason String?
   settlementId String?
   settlement   Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)

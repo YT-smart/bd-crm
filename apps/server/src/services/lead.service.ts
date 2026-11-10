@@ -328,7 +328,7 @@ export async function addFollow(id: string, method: string, content: string, use
   return f;
 }
 
-/* ============ 登记签约 → 生成待审核成交 ============ */
+/* ============ 登记签约 → 生成待到账成交 ============ */
 
 export async function signLead(id: string, input: LeadSignInput, userId: string, scope: LeadScope) {
   const lead = await findInScope(id, scope);

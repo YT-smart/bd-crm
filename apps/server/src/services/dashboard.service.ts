@@ -54,7 +54,7 @@ export async function getSummary(range: DashboardRange): Promise<DashboardSummar
   const orgNew = (from: Date, to: Date) =>
     prisma.org.count({ where: { deletedAt: null, createdAt: { gte: from, lt: to } } });
 
-  const [orgTotal, orgCur, orgPrev, dealCur, dealPrev, incCur, incPrev, receivable, pendingAuditCount] =
+  const [orgTotal, orgCur, orgPrev, dealCur, dealPrev, incCur, incPrev, receivable] =
     await Promise.all([
       prisma.org.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
       orgNew(r.start, r.end),
@@ -68,7 +68,6 @@ export async function getSummary(range: DashboardRange): Promise<DashboardSummar
         _count: { _all: true },
         _sum: { commission: true },
       }),
-      prisma.deal.count({ where: { status: 'PENDING_AUDIT' } }),
     ]);
 
   return {
@@ -79,7 +78,6 @@ export async function getSummary(range: DashboardRange): Promise<DashboardSummar
     dealAmount: metric(num(dealCur._sum.amount), num(dealPrev._sum.amount)),
     commissionIncome: metric(num(incCur._sum.commission), num(incPrev._sum.commission)),
     receivable: { amount: num(receivable._sum.commission), count: receivable._count._all },
-    pendingAuditCount,
   };
 }
 
@@ -286,7 +284,7 @@ function toDealBrief(d: DealBriefRow): DealBrief {
 export async function getLists(): Promise<DashboardLists> {
   const [pending, recent, incomplete] = await Promise.all([
     prisma.deal.findMany({
-      where: { status: 'PENDING_AUDIT' },
+      where: { status: 'PENDING_PAYMENT' },
       orderBy: { createdAt: 'desc' },
       take: 6,
       select: dealBriefSelect,
@@ -332,14 +330,13 @@ export async function getStaffDashboard(userId: string, range: DashboardRange): 
   const months = lastMonths(12);
   const from = monthStart(-11);
 
-  const [cur, prev, receivable, settled, statusGroups, recent, trendRows, topRows, leadGroups, leadNew, needFollow] =
+  const [cur, prev, receivable, settled, recent, trendRows, topRows, leadGroups, leadNew, needFollow] =
     await Promise.all([
       dealAgg(r.start, r.end),
       dealAgg(r.prevStart, r.prevEnd),
       prisma.deal.aggregate({ where: { ...mine, status: 'PENDING_PAYMENT' }, _count: { _all: true }, _sum: { commission: true } }),
       prisma.deal.aggregate({ where: { ...mine, status: 'SETTLED' }, _sum: { commission: true } }),
-      prisma.deal.groupBy({ by: ['status'], where: { ...mine, status: { in: ['PENDING_AUDIT', 'REJECTED'] } }, _count: { _all: true } }),
-      prisma.deal.findMany({ where: mine, orderBy: { createdAt: 'desc' }, take: 6, select: dealBriefSelect }),
+      prisma.deal.findMany({ where: approved, orderBy: { createdAt: 'desc' }, take: 6, select: dealBriefSelect }),
       prisma.$queryRaw<{ month: string; deal_count: number; amount: number; commission: number }[]>`
         SELECT to_char(date_trunc('month', ${localTs('dealAt')}), 'YYYY-MM') AS month,
                COUNT(*)::int AS deal_count,
@@ -382,7 +379,6 @@ export async function getStaffDashboard(userId: string, range: DashboardRange): 
     byStatus[g.pushStatus] = g._count._all;
     leadTotal += g._count._all;
   }
-  const statusCount = (s: string) => statusGroups.find((g) => g.status === s)?._count._all ?? 0;
 
   return {
     range,
@@ -391,8 +387,6 @@ export async function getStaffDashboard(userId: string, range: DashboardRange): 
     commission: metric(num(cur._sum.commission), num(prev._sum.commission)),
     receivable: { amount: num(receivable._sum.commission), count: receivable._count._all },
     settledTotal: num(settled._sum.commission),
-    pendingAudit: statusCount('PENDING_AUDIT'),
-    rejected: statusCount('REJECTED'),
     trend: months.map((month) => ({
       month,
       dealCount: tm.get(month)?.deal_count ?? 0,
@@ -423,7 +417,7 @@ export async function getMyOrgDashboard(orgId: string): Promise<MyOrgDashboard> 
       _count: { _all: true },
       _sum: { amount: true, commission: true },
     }),
-    prisma.deal.findMany({ where: { orgId }, orderBy: { createdAt: 'desc' }, take: 8, select: dealBriefSelect }),
+    prisma.deal.findMany({ where: { orgId, status: { in: APPROVED } }, orderBy: { createdAt: 'desc' }, take: 8, select: dealBriefSelect }),
   ]);
 
   const g = (s: string) => groups.find((x) => x.status === s);
@@ -446,8 +440,7 @@ export async function getMyOrgDashboard(orgId: string): Promise<MyOrgDashboard> 
       commission: approved.reduce((s, x) => s + num(x._sum.commission), 0),
       settled: num(g('SETTLED')?._sum.commission),
       unsettled: num(g('PENDING_PAYMENT')?._sum.commission),
-      pendingAudit: g('PENDING_AUDIT')?._count._all ?? 0,
-      rejected: g('REJECTED')?._count._all ?? 0,
+      unsettledCount: g('PENDING_PAYMENT')?._count._all ?? 0,
     },
     recentDeals: recent.map(toDealBrief),
   };

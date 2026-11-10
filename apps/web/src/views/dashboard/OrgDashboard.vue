@@ -72,9 +72,9 @@ onMounted(async () => {
       <StatCard class="span-3 rise-in" label="累计成交" :value="num(data?.totals.dealCount)" unit="笔" :note="`成交额 ${money(data?.totals.amount)}`" :delta="null" :loading="loading" />
       <StatCard class="span-3 rise-in" style="animation-delay: 40ms" label="应付佣金" :value="money(data?.totals.commission)" note="已核实成交的佣金合计" :delta="null" :loading="loading" />
       <StatCard class="span-3 rise-in" style="animation-delay: 80ms" label="已结算" :value="money(data?.totals.settled)" note="已确认到账" :delta="null" :loading="loading" />
-      <StatCard class="span-3 rise-in" style="animation-delay: 120ms" label="未结算" :value="money(data?.totals.unsettled)" :note="`待审核 ${data?.totals.pendingAudit ?? 0} 笔 · 已驳回 ${data?.totals.rejected ?? 0} 笔`" :delta="null" :loading="loading" />
+      <StatCard class="span-3 rise-in" style="animation-delay: 120ms" label="未结算" :value="money(data?.totals.unsettled)" :note="`待到账 ${data?.totals.unsettledCount ?? 0} 笔`" :delta="null" :loading="loading" />
 
-      <DealTable class="span-12 rise-in" style="animation-delay: 160ms" title="最近成交" sub="本机构最近录入的成交及审核状态" :data="data?.recentDeals ?? []" :loading="loading" :show-org="false" />
+      <DealTable class="span-12 rise-in" style="animation-delay: 160ms" title="最近成交" sub="本机构最近录入的成交及到账状态" :data="data?.recentDeals ?? []" :loading="loading" :show-org="false" />
     </section>
   </div>
 </template>

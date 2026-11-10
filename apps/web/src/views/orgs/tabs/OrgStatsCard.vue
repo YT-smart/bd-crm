@@ -14,7 +14,6 @@ defineProps<{ stats: OrgStats }>();
       <div class="kv-row"><span class="kv-label">累计佣金</span><span class="kv-value num brand">{{ money(stats.commission) }}</span></div>
       <div class="kv-row"><span class="kv-label">已结算</span><span class="kv-value num success">{{ money(stats.settled) }}</span></div>
       <div class="kv-row"><span class="kv-label">待结算</span><span class="kv-value num warning">{{ money(stats.unsettled) }}</span></div>
-      <div class="kv-row"><span class="kv-label">待审核</span><span class="kv-value num">{{ stats.pendingAudit }} 笔</span></div>
     </div>
   </OrgCard>
 </template>

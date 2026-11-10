@@ -25,7 +25,7 @@ const rules: FormRules = {
 
 const FEATURES = [
   { icon: Building2, title: '机构档案', desc: '联系人、产品报价、合作信息集中管理，资料完整度一目了然' },
-  { icon: ShieldCheck, title: '成交审核与结算', desc: '机构自报成交，员工审核，管理员确认到账，全程留痕' },
+  { icon: ShieldCheck, title: '成交与结算', desc: '员工、机构录入成交，管理员确认到账即结算，全程留痕' },
   { icon: BarChart3, title: '经营看板', desc: '成交额、佣金收入、地区分布与机构贡献实时统计' },
 ];
 

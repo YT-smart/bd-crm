@@ -145,7 +145,7 @@ router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
   const detail = await getOrgDetail(req.params.id);
   // 佣金比例（默认 / 产品）和合作信息员工也能看；整家机构的合作数据只给管理员，机构账号看自己的
   if (!canSeeOrgMoney(req)) {
-    detail.stats = { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0, pendingAudit: 0 };
+    detail.stats = { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0 };
   }
   ok(res, detail);
 });

@@ -58,7 +58,6 @@ export interface DashboardSummary {
   dealAmount: MetricWithDelta;
   commissionIncome: MetricWithDelta;
   receivable: { amount: number; count: number };
-  pendingAuditCount: number;
 }
 
 export interface TrendPoint {
@@ -164,8 +163,8 @@ export interface MyOrgDashboard {
     commission: number;
     settled: number;
     unsettled: number;
-    pendingAudit: number;
-    rejected: number;
+    /** 待到账笔数 */
+    unsettledCount: number;
   };
   recentDeals: DealBrief[];
 }
@@ -181,8 +180,6 @@ export interface StaffDashboard {
   receivable: { amount: number; count: number };
   /** 累计已到账佣金 */
   settledTotal: number;
-  pendingAudit: number;
-  rejected: number;
   /** 近 12 个月 */
   trend: TrendPoint[];
   /** 本期合作最多的机构（按佣金） */
@@ -217,10 +214,11 @@ export interface OrgListItem {
   tags: string[];
   completeness: number;
   ownerName: string | null;
+  /** 录入的成交笔数（待到账 + 已结算） */
   dealCount: number;
-  /** 报单总数（含待审核、已驳回） */
-  reportCount: number;
-  /** 成交率 = 已核实成交 / 报单总数（%），没有报单时为 null */
+  /** 已结算笔数 */
+  settledCount: number;
+  /** 成交率 = 已结算 / 录入（%），没有录入时为 null */
   dealRate: number | null;
   dealAmount: number;
   commission: number;
@@ -353,7 +351,6 @@ export interface OrgStats {
   commission: number;
   settled: number;
   unsettled: number;
-  pendingAudit: number;
 }
 
 /* -- 机构新增/编辑 -- */
@@ -526,25 +523,31 @@ export interface DealRevokeInput {
   reason: string;
 }
 
+/** 成交与结算顶部数字：按当前筛选条件统计 */
 export interface DealSummary {
-  total: number;
-  pendingAudit: number;
-  pendingPayment: number;
-  settled: number;
-  rejected: number;
-  pendingPaymentAmount: number;
+  /** 成交数量 */
+  count: number;
+  /** 签约金额（成交额合计） */
+  amount: number;
+  /** 佣金金额 */
+  commission: number;
+  /** 待结算（待到账）佣金 */
+  pendingAmount: number;
+  /** 已结算佣金 */
   settledAmount: number;
+  /** 不看状态筛选时各状态的数量（total = 全部） */
+  byStatus: Record<string, number>;
 }
 
 /** 某个时间段的成交统计（按成交日期） */
 export interface DealPeriodStat {
-  /** 已核实成交（待到账 + 已结算） */
+  /** 录入的成交（待到账 + 已结算） */
   count: number;
   amount: number;
   commission: number;
-  /** 报单总数（含待审核、已驳回） */
-  reports: number;
-  /** 成交率 = count / reports（%），无报单为 null */
+  /** 已结算笔数 */
+  settled: number;
+  /** 成交率 = settled / count（%），没有成交为 null */
   rate: number | null;
 }
 
@@ -660,7 +663,7 @@ export interface LeadInput {
 /** 推出状态各自的数量（页签 / 筛选项上显示） */
 export type LeadStatusCounts = Record<string, number> & { total: number };
 
-/** 登记签约：生成一条待审核的成交 */
+/** 登记签约：生成一条待到账的成交 */
 export interface LeadSignInput {
   orgId: string;
   productId?: string | null;

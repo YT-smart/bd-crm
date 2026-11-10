@@ -105,21 +105,21 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
     const sm = await dealCountsOf(all.map((o) => o.id));
     const value = (id: string) => {
       const s = sm.get(id);
-      if (sort === 'dealCount') return s?.approved ?? 0;
-      return s?.reports ? s.approved / s.reports : null;
+      if (sort === 'dealCount') return s?.entered ?? 0;
+      return s?.entered ? s.settled / s.entered : null;
     };
     const dir = order === 'asc' ? 1 : -1;
     const pageIds = all
       .sort((a, b) => {
         const va = value(a.id);
         const vb = value(b.id);
-        // 没有报单的机构（成交率为空）始终排在最后
+        // 没有成交的机构（成交率为空）始终排在最后
         if (va === null || vb === null) {
           if (va !== vb) return va === null ? 1 : -1;
         } else if (va !== vb) {
           return dir * (va - vb);
         }
-        return (sm.get(b.id)?.approved ?? 0) - (sm.get(a.id)?.approved ?? 0) || b.createdAt.getTime() - a.createdAt.getTime();
+        return (sm.get(b.id)?.entered ?? 0) - (sm.get(a.id)?.entered ?? 0) || b.createdAt.getTime() - a.createdAt.getTime();
       })
       .slice(skip, skip + q.pageSize)
       .map((o) => o.id);
@@ -172,9 +172,9 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
         tags: o.tags,
         completeness: o.completeness,
         ownerName: o.owner?.name ?? null,
-        dealCount: c?.approved ?? 0,
-        reportCount: c?.reports ?? 0,
-        dealRate: c?.reports ? Math.round((c.approved / c.reports) * 1000) / 10 : null,
+        dealCount: c?.entered ?? 0,
+        settledCount: c?.settled ?? 0,
+        dealRate: c?.entered ? Math.round((c.settled / c.entered) * 1000) / 10 : null,
         dealAmount: num(s?._sum.amount),
         commission: num(s?._sum.commission),
         lastDealAt: s?._max.dealAt?.toISOString() ?? null,
@@ -184,19 +184,19 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
   };
 }
 
-/** 各机构的报单总数与已核实成交数（成交率 = approved / reports） */
+/** 各机构录入的成交数（待到账 + 已结算）与已结算数（成交率 = settled / entered） */
 async function dealCountsOf(orgIds: string[]) {
-  const m = new Map<string, { reports: number; approved: number }>();
+  const m = new Map<string, { entered: number; settled: number }>();
   if (!orgIds.length) return m;
   const groups = await prisma.deal.groupBy({
     by: ['orgId', 'status'],
-    where: { orgId: { in: orgIds } },
+    where: { orgId: { in: orgIds }, status: { in: [...APPROVED_DEAL_STATUSES] } },
     _count: { _all: true },
   });
   for (const g of groups) {
-    const cur = m.get(g.orgId) ?? { reports: 0, approved: 0 };
-    cur.reports += g._count._all;
-    if (APPROVED_DEAL_STATUSES.includes(g.status)) cur.approved += g._count._all;
+    const cur = m.get(g.orgId) ?? { entered: 0, settled: 0 };
+    cur.entered += g._count._all;
+    if (g.status === DealStatus.SETTLED) cur.settled += g._count._all;
     m.set(g.orgId, cur);
   }
   return m;
@@ -233,7 +233,6 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     commission: 0,
     settled: 0,
     unsettled: 0,
-    pendingAudit: 0,
   };
   for (const g of dealAgg) {
     const cnt = g._count._all;
@@ -249,8 +248,6 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
       stats.dealCount += cnt;
       stats.dealAmount += amt;
       stats.commission += com;
-    } else if (g.status === DealStatus.PENDING_AUDIT) {
-      stats.pendingAudit += cnt;
     }
   }
 

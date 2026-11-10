@@ -2,7 +2,7 @@
 import { ref, reactive, h, onMounted, computed } from 'vue';
 import { Plus } from 'lucide-vue-next';
 import { NDataTable, NSelect, type DataTableColumns } from 'naive-ui';
-import { DealStatus, DEAL_STATUS_LABEL, type DealListItem } from '@bdcrm/shared';
+import { ACTIVE_DEAL_STATUSES, DealStatus, DEAL_STATUS_LABEL, type DealListItem } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useMessage } from 'naive-ui';
@@ -41,7 +41,7 @@ const pagination = reactive({
   onUpdatePageSize: (s: number) => { pagination.pageSize = s; pagination.page = 1; load(); },
 });
 
-const statusOptions = (Object.keys(DEAL_STATUS_LABEL) as DealStatus[]).map((k) => ({ label: DEAL_STATUS_LABEL[k], value: k }));
+const statusOptions = ACTIVE_DEAL_STATUSES.map((k) => ({ label: DEAL_STATUS_LABEL[k], value: k }));
 
 async function load() {
   loading.value = true;
@@ -71,14 +71,14 @@ function onStatusChange() {
 onMounted(load);
 
 const columns = computed<DataTableColumns<DealListItem>>(() => [
-  { title: '成交日期', key: 'dealAt', width: 120, render: (r) => h('span', { class: 'num', style: 'white-space:nowrap' }, date(r.dealAt)) },
-  { title: '学员', key: 'studentName', minWidth: 90 },
-  { title: '产品', key: 'productName', minWidth: 120, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
-  { title: '成交金额', key: 'amount', width: 120, align: 'right', render: (r) => h('span', { class: 'num' }, money(r.amount)) },
-  { title: '佣金比例', key: 'rate', width: 90, align: 'right', render: (r) => h('span', { class: 'num' }, `${r.rate}%`) },
-  { title: '佣金', key: 'commission', width: 110, align: 'right', render: (r) => h('span', { class: 'num strong' }, money(r.commission)) },
-  { title: '状态', key: 'status', width: 96, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
-  ...(isAdmin.value ? [{ title: '录入人', key: 'createdByName', width: 90 }] : []),
+  { title: '成交日期', key: 'dealAt', width: 96, render: (r) => h('span', { class: 'num', style: 'white-space:nowrap' }, date(r.dealAt)) },
+  { title: '学员', key: 'studentName', width: 72, ellipsis: { tooltip: true } },
+  { title: '产品', key: 'productName', minWidth: 110, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
+  { title: '成交金额', key: 'amount', width: 96, align: 'right', render: (r) => h('span', { class: 'num' }, money(r.amount)) },
+  { title: '比例', key: 'rate', width: 56, align: 'right', render: (r) => h('span', { class: 'num text-2' }, `${r.rate}%`) },
+  { title: '佣金', key: 'commission', width: 88, align: 'right', render: (r) => h('span', { class: 'num strong' }, money(r.commission)) },
+  { title: '状态', key: 'status', width: 80, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
+  ...(isAdmin.value ? [{ title: '录入人', key: 'createdByName', width: 72, ellipsis: { tooltip: true } }] : []),
 ]);
 </script>
 
@@ -107,7 +107,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => [
       :loading="loading"
       :pagination="pagination"
       :row-key="(r: DealListItem) => r.id"
-      :scroll-x="820"
+      :scroll-x="isAdmin ? 670 : 600"
       size="small"
     />
     <DealCreateModal v-model:show="showCreate" :org-id="orgId" @created="onCreated" />
@@ -116,4 +116,6 @@ const columns = computed<DataTableColumns<DealListItem>>(() => [
 
 <style scoped>
 :deep(.strong) { font-weight: 600; }
+:deep(.n-data-table-th),
+:deep(.n-data-table-td) { padding-left: 8px; padding-right: 8px; }
 </style>

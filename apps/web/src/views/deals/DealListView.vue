@@ -2,15 +2,12 @@
 import { computed, h, reactive, ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  NDataTable, NInput, NSelect, NDatePicker, NModal,
-  NForm, NFormItem, NTag, useMessage, useDialog,
+  NDataTable, NInput, NDatePicker, NModal,
+  NForm, NFormItem, useMessage, useDialog,
   type DataTableColumns, type DataTableRowKey,
 } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
-import {
-  CheckCircle2, Download, Plus, RotateCcw, Search,
-  XCircle, Wallet, Undo2, Lock,
-} from 'lucide-vue-next';
+import { Download, Plus, RotateCcw, Search, Wallet, Lock } from 'lucide-vue-next';
 import {
   DealStatus, DEAL_STATUS_LABEL, PERM,
   type DealListItem, type DealListQuery, type DealSummary,
@@ -18,6 +15,7 @@ import {
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import DealCreateModal from '@/components/DealCreateModal.vue';
+import FilterRow, { type FilterOption } from '@/components/FilterRow.vue';
 import { useAuthStore } from '@/stores/auth';
 import StatusTag from '@/components/StatusTag.vue';
 import { date, money, num } from '@/utils/format';
@@ -30,34 +28,45 @@ const auth = useAuthStore();
 
 /* ---------- 权限 ---------- */
 const canCreate = computed(() => auth.can('deal:create'));
-const canAudit = computed(() => auth.can('deal:audit'));
+/** 确认到账（= 结算）：管理员 */
 const canSettle = computed(() => auth.can('deal:settle'));
-
-/* ---------- 统计 ---------- */
-const summary = ref<DealSummary | null>(null);
-async function loadSummary() {
-  try { summary.value = await dealApi.summary(); } catch {}
-}
-
-/* ---------- 状态 Tab ---------- */
-const statusTabs = computed<Array<{ label: string; value: string | null; count: number }>>(() => {
-  const s = summary.value;
-  return [
-    { label: '全部', value: null, count: s?.total ?? 0 },
-    { label: '待审核', value: DealStatus.PENDING_AUDIT, count: s?.pendingAudit ?? 0 },
-    { label: '待到账', value: DealStatus.PENDING_PAYMENT, count: s?.pendingPayment ?? 0 },
-    { label: '已结算', value: DealStatus.SETTLED, count: s?.settled ?? 0 },
-    { label: '已驳回', value: DealStatus.REJECTED, count: s?.rejected ?? 0 },
-  ];
-});
 
 /** 员工只能看自己录入的成交，管理员看全部，机构账号看本机构 */
 const ownOnly = computed(() => auth.user?.role === 'STAFF' && !auth.can(PERM.DEAL_VIEW_ALL));
 
-/* ---------- 筛选与列表 ---------- */
+/* ---------- 筛选 ---------- */
+type Preset = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | 'year';
+const DATE_PRESETS: FilterOption[] = [
+  { label: '今天', value: 'today' },
+  { label: '昨天', value: 'yesterday' },
+  { label: '本周', value: 'week' },
+  { label: '上周', value: 'lastWeek' },
+  { label: '本月', value: 'month' },
+  { label: '上月', value: 'lastMonth' },
+  { label: '今年', value: 'year' },
+];
+/** 快捷日期 → [开始, 结束]（含当天，按本地时间） */
+function presetRange(p: Preset): [Date, Date] {
+  const now = new Date();
+  const d = (y: number, m: number, day: number) => new Date(y, m, day);
+  const y = now.getFullYear(), m = now.getMonth(), t = now.getDate();
+  const dow = (now.getDay() + 6) % 7; // 周一 = 0
+  switch (p) {
+    case 'today': return [d(y, m, t), d(y, m, t)];
+    case 'yesterday': return [d(y, m, t - 1), d(y, m, t - 1)];
+    case 'week': return [d(y, m, t - dow), d(y, m, t)];
+    case 'lastWeek': return [d(y, m, t - dow - 7), d(y, m, t - dow - 1)];
+    case 'month': return [d(y, m, 1), d(y, m, t)];
+    case 'lastMonth': return [d(y, m - 1, 1), d(y, m, 0)];
+    case 'year': return [d(y, 0, 1), d(y, m, t)];
+  }
+}
+
 const filters = reactive({
   keyword: '',
   status: null as DealStatus | null,
+  datePreset: null as Preset | null,
+  /** 自定义日期范围（和快捷日期二选一） */
   dateRange: rangeFromQuery(),
   page: 1,
 });
@@ -69,8 +78,86 @@ function rangeFromQuery(): [number, number] | null {
   if (typeof start !== 'string' || typeof end !== 'string' || !re.test(start) || !re.test(end)) return null;
   return [new Date(`${start}T00:00:00`).getTime(), new Date(`${end}T00:00:00`).getTime()];
 }
-const pageSize = ref(20);
+
+/** 当前生效的日期范围 */
+const activeRange = computed<[string, string] | null>(() => {
+  if (filters.datePreset) {
+    const [a, b] = presetRange(filters.datePreset);
+    return [date(a), date(b)];
+  }
+  return filters.dateRange ? [date(filters.dateRange[0]), date(filters.dateRange[1])] : null;
+});
+
 const sort = ref<{ key: DealListQuery['sort']; order: 'asc' | 'desc' } | null>(null);
+
+/** 列表、统计、导出共用的查询条件 */
+function query(): DealListQuery {
+  return {
+    keyword: filters.keyword || undefined,
+    status: filters.status ?? undefined,
+    startDate: activeRange.value?.[0],
+    endDate: activeRange.value?.[1],
+    sort: sort.value?.key,
+    order: sort.value?.order,
+  };
+}
+
+/* ---------- 顶部统计（跟随筛选） ---------- */
+const summary = ref<DealSummary | null>(null);
+let sumSeq = 0;
+async function loadSummary() {
+  const my = ++sumSeq;
+  try {
+    const r = await dealApi.summary(query());
+    if (my === sumSeq) summary.value = r;
+  } catch {
+    /* 统计失败不影响列表 */
+  }
+}
+
+/* ---------- 筛选面板的几行 ---------- */
+const statusOptions = computed<FilterOption[]>(() => [
+  { label: '待到账', value: DealStatus.PENDING_PAYMENT, count: summary.value?.byStatus[DealStatus.PENDING_PAYMENT] ?? 0 },
+  { label: '已结算', value: DealStatus.SETTLED, count: summary.value?.byStatus[DealStatus.SETTLED] ?? 0 },
+]);
+const statusRow = computed({
+  get: () => (filters.status ? [filters.status] : []),
+  set: (v: string[]) => { filters.status = (v[0] as DealStatus) ?? null; },
+});
+const dateRow = computed({
+  get: () => (filters.datePreset ? [filters.datePreset] : []),
+  set: (v: string[]) => {
+    filters.datePreset = (v[0] as Preset) ?? null;
+    if (filters.datePreset) filters.dateRange = null;
+  },
+});
+/** 自定义日期：选了就取消快捷日期 */
+function onPickRange(v: [number, number] | null) {
+  filters.dateRange = v;
+  if (v) filters.datePreset = null;
+}
+
+const SORT_OPTIONS: FilterOption[] = [
+  { label: '成交日期最新', value: 'dealAt:desc' },
+  { label: '成交日期最早', value: 'dealAt:asc' },
+  { label: '成交额从高到低', value: 'amount:desc' },
+  { label: '成交额从低到高', value: 'amount:asc' },
+  { label: '佣金从高到低', value: 'commission:desc' },
+  { label: '佣金从低到高', value: 'commission:asc' },
+  { label: '录入时间最早', value: 'createdAt:asc' },
+];
+const sortRow = computed({
+  get: () => (sort.value ? [`${sort.value.key}:${sort.value.order}`] : []),
+  set: (v: string[]) => {
+    const [key, order] = (v[0] ?? '').split(':');
+    sort.value = v[0] ? { key: key as DealListQuery['sort'], order: order as 'asc' | 'desc' } : null;
+    filters.page = 1;
+    load();
+  },
+});
+
+/* ---------- 列表 ---------- */
+const pageSize = ref(20);
 const rows = ref<DealListItem[]>([]);
 const total = ref(0);
 const loading = ref(false);
@@ -81,16 +168,7 @@ async function load() {
   const my = ++seq;
   loading.value = true;
   try {
-    const res = await dealApi.list({
-      page: filters.page,
-      pageSize: pageSize.value,
-      keyword: filters.keyword || undefined,
-      status: filters.status ?? undefined,
-      startDate: filters.dateRange ? date(filters.dateRange[0]) : undefined,
-      endDate: filters.dateRange ? date(filters.dateRange[1]) : undefined,
-      sort: sort.value?.key,
-      order: sort.value?.order,
-    });
+    const res = await dealApi.list({ ...query(), page: filters.page, pageSize: pageSize.value });
     if (my !== seq) return;
     rows.value = res.list;
     total.value = res.total;
@@ -103,16 +181,21 @@ async function load() {
 
 async function reload() { await Promise.all([load(), loadSummary()]); }
 
-const debouncedKeyword = useDebounceFn(() => { filters.page = 1; load(); }, 300);
+const debouncedKeyword = useDebounceFn(() => { filters.page = 1; reload(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
-watch(() => [filters.status, filters.dateRange], () => { filters.page = 1; load(); });
+watch(() => [filters.status, filters.datePreset, filters.dateRange], () => {
+  filters.page = 1;
+  checkedKeys.value = [];
+  reload();
+});
 // 仪表盘带过来的日期参数只用于首次进入；之后改动日期筛选就去掉，避免刷新又被带回来
-watch(() => filters.dateRange, () => {
+watch(() => [filters.dateRange, filters.datePreset], () => {
   if (route.query.start || route.query.end) router.replace({ query: { ...route.query, start: undefined, end: undefined } });
 });
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', status: null, dateRange: null, page: 1 });
+  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, page: 1 });
+  sort.value = null;
   checkedKeys.value = [];
 }
 
@@ -123,111 +206,42 @@ function onSorter(s: any) {
   load();
 }
 
-/** 排序下拉（与表头排序同步）：机构太多不再提供机构下拉，用关键词搜机构名即可 */
-const SORT_OPTIONS = [
-  { label: '默认排序', value: '' },
-  { label: '成交额从高到低', value: 'amount:desc' },
-  { label: '成交额从低到高', value: 'amount:asc' },
-  { label: '佣金从高到低', value: 'commission:desc' },
-  { label: '佣金从低到高', value: 'commission:asc' },
-  { label: '成交日期最新', value: 'dealAt:desc' },
-  { label: '成交日期最早', value: 'dealAt:asc' },
-  { label: '录入时间最新', value: 'createdAt:desc' },
-  { label: '录入时间最早', value: 'createdAt:asc' },
-];
-const sortValue = computed({
-  get: () => (sort.value ? `${sort.value.key}:${sort.value.order}` : ''),
-  set: (v: string) => {
-    const [key, order] = v.split(':');
-    sort.value = v ? { key: key as DealListQuery['sort'], order: order as 'asc' | 'desc' } : null;
-    filters.page = 1;
-    load();
-  },
-});
-
-/* ---------- 机构选项 ---------- */
-
-
 /* ---------- 录入成交 ---------- */
 const showCreate = ref(false);
 function openCreate() {
   showCreate.value = true;
 }
 
-/* ---------- 审核弹窗 ---------- */
-const auditTarget = ref<DealListItem | null>(null);
-const rejectReason = ref('');
-const showAudit = ref(false);
-
-function openAudit(row: DealListItem) {
-  auditTarget.value = row;
-  rejectReason.value = '';
-  showAudit.value = true;
-}
-
-async function doAudit(action: 'approve' | 'reject') {
-  if (!auditTarget.value) return;
-  try {
-    await dealApi.audit(auditTarget.value.id, {
-      action,
-      rejectReason: action === 'reject' ? rejectReason.value : undefined,
-    });
-    message.success(action === 'approve' ? '已通过' : '已驳回');
-    showAudit.value = false;
-    reload();
-  } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '操作失败');
-  }
-}
-
-async function doBatchApprove() {
-  if (!checkedKeys.value.length) { message.warning('请先勾选记录'); return; }
-  dialog.info({
-    title: '批量审核',
-    content: `确定将选中的 ${checkedKeys.value.length} 条记录全部审核通过？`,
-    positiveText: '全部通过',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const r = await dealApi.batchApprove(checkedKeys.value as string[]);
-        message.success(`已通过 ${r.updated} 条`);
-        checkedKeys.value = [];
-        reload();
-      } catch (e) {
-        message.error(e instanceof ApiError ? e.message : '操作失败');
-      }
-    },
-  });
-}
-
-/* ---------- 结算 ---------- */
+/* ---------- 确认到账（= 结算） ---------- */
 const showSettle = ref(false);
+const settleIds = ref<string[]>([]);
 const settleForm = reactive({
   settledAt: Date.now() as number | null,
   settleNote: '',
 });
 
-function openSettle() {
-  if (!checkedKeys.value.length) { message.warning('请先勾选待结算记录'); return; }
+function openSettle(ids: string[]) {
+  if (!ids.length) { message.warning('请先勾选待到账的记录'); return; }
+  settleIds.value = ids;
   settleForm.settledAt = Date.now();
   settleForm.settleNote = '';
   showSettle.value = true;
 }
 
 async function doSettle() {
-  if (!settleForm.settledAt) { message.warning('请选择结算日期'); return; }
+  if (!settleForm.settledAt) { message.warning('请选择到账日期'); return; }
   try {
     const r = await dealApi.settle({
-      dealIds: checkedKeys.value as string[],
+      dealIds: settleIds.value,
       settledAt: new Date(settleForm.settledAt).toISOString(),
       settleNote: settleForm.settleNote.trim() || undefined,
     });
-    message.success(`已结算 ${r.updated} 条`);
+    message.success(`已确认到账 ${r.updated} 条`);
     showSettle.value = false;
     checkedKeys.value = [];
     reload();
   } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '结算失败');
+    message.error(e instanceof ApiError ? e.message : '操作失败');
   }
 }
 
@@ -235,9 +249,9 @@ async function doSettle() {
 function handleRevoke(row: DealListItem) {
   const revokeReason = ref('');
   dialog.warning({
-    title: '撤销结算',
+    title: '撤销到账',
     content: () => h('div', [
-      h('p', `确定撤销"${row.studentName}"的结算状态？将回退为"待到账"。`),
+      h('p', `确定撤销"${row.studentName}"的到账？将回退为"待到账"。`),
       h(NInput, {
         value: revokeReason.value,
         'onUpdate:value': (v: string) => { revokeReason.value = v; },
@@ -252,7 +266,7 @@ function handleRevoke(row: DealListItem) {
       if (!revokeReason.value.trim()) { message.warning('请填写撤销原因'); return false; }
       try {
         await dealApi.revokeSettle(row.id, revokeReason.value);
-        message.success('已撤销结算');
+        message.success('已撤销到账');
         reload();
       } catch (e) {
         message.error(e instanceof ApiError ? e.message : '操作失败');
@@ -264,12 +278,7 @@ function handleRevoke(row: DealListItem) {
 /* ---------- 导出 ---------- */
 async function handleExport() {
   try {
-    const data = await dealApi.exportData({
-      keyword: filters.keyword || undefined,
-      status: filters.status ?? undefined,
-      startDate: filters.dateRange ? date(filters.dateRange[0]) : undefined,
-      endDate: filters.dateRange ? date(filters.dateRange[1]) : undefined,
-    });
+    const data = await dealApi.exportData(query());
     const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -285,9 +294,9 @@ async function handleExport() {
 const columns = computed<DataTableColumns<DealListItem>>(() => {
   const cols: DataTableColumns<DealListItem> = [];
 
-  // 复选框列
-  if (canAudit.value || canSettle.value) {
-    cols.push({ type: 'selection', fixed: 'left' });
+  // 复选框列：只有待到账的能勾选（批量确认到账）
+  if (canSettle.value) {
+    cols.push({ type: 'selection', fixed: 'left', disabled: (r) => r.status !== DealStatus.PENDING_PAYMENT });
   }
 
   cols.push(
@@ -312,7 +321,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
     {
       title: '成交日期', key: 'dealAt', width: 110, sorter: true,
       sortOrder: sort.value?.key === 'dealAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
-      render: (r) => h('span', { class: 'num text-2' }, date(r.dealAt)),
+      render: (r) => h('span', { class: 'num text-2', style: 'white-space: nowrap' }, date(r.dealAt)),
     },
     {
       title: '成交额', key: 'amount', width: 120, align: 'right', sorter: true,
@@ -330,7 +339,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
     {
       title: '录入时间', key: 'createdAt', width: 110, sorter: true,
       sortOrder: sort.value?.key === 'createdAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
-      render: (r) => h('span', { class: 'num text-2' }, date(r.createdAt)),
+      render: (r) => h('span', { class: 'num text-2', style: 'white-space: nowrap' }, date(r.createdAt)),
     },
   );
 
@@ -342,15 +351,13 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
     fixed: 'right',
     render: (r) => {
       const btns: any[] = [];
-      if (r.status === DealStatus.PENDING_AUDIT && canAudit.value) {
-        btns.push(h('button', { class: 'link-btn sm', onClick: (e: Event) => { e.stopPropagation(); openAudit(r); } }, '审核'));
+      if (r.status === DealStatus.PENDING_PAYMENT && canSettle.value) {
+        btns.push(h('button', { class: 'link-btn sm', onClick: (e: Event) => { e.stopPropagation(); openSettle([r.id]); } }, '确认到账'));
       }
       if (r.status === DealStatus.SETTLED && canSettle.value) {
-        btns.push(h('button', { class: 'link-btn sm text-warning', onClick: (e: Event) => { e.stopPropagation(); handleRevoke(r); } }, '撤销'));
+        btns.push(h('button', { class: 'link-btn sm text-warning', onClick: (e: Event) => { e.stopPropagation(); handleRevoke(r); } }, '撤销到账'));
       }
-      if (r.rejectReason) {
-        btns.push(h(NTag, { size: 'small', type: 'error', bordered: false }, () => r.rejectReason));
-      }
+      if (!btns.length) return h('span', { class: 'text-3' }, '--');
       return h('div', { style: 'display: flex; gap: 6px; align-items: center' }, btns);
     },
   });
@@ -367,7 +374,7 @@ const pagination = computed(() => ({
   prefix: () => `共 ${total.value} 条`,
 }));
 
-const hasFilter = computed(() => !!(filters.keyword || filters.dateRange));
+const hasFilter = computed(() => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || sort.value));
 
 /* ---------- 初始化 ---------- */
 onMounted(async () => {
@@ -381,38 +388,46 @@ onMounted(async () => {
       <Lock :size="13" :stroke-width="1.75" /> 仅自己可见
     </div>
 
-    <!-- 统计卡片 -->
-    <div v-if="summary" class="summary-row rise-in">
+    <!-- 统计卡片：跟随下面的筛选 -->
+    <div class="summary-row rise-in">
       <div class="summary-card">
-        <div class="summary-label text-3">待审核</div>
-        <div class="summary-value warning">{{ summary.pendingAudit }}</div>
+        <div class="summary-label text-3">成交数量</div>
+        <div class="summary-value">{{ num(summary?.count) }}<span class="summary-unit">笔</span></div>
       </div>
       <div class="summary-card">
-        <div class="summary-label text-3">待到账</div>
-        <div class="summary-value info">{{ summary.pendingPayment }}</div>
-        <div class="summary-sub text-3">{{ money(summary.pendingPaymentAmount) }}</div>
+        <div class="summary-label text-3">签约金额</div>
+        <div class="summary-value">{{ money(summary?.amount) }}</div>
       </div>
       <div class="summary-card">
-        <div class="summary-label text-3">已结算</div>
-        <div class="summary-value success">{{ summary.settled }}</div>
-        <div class="summary-sub text-3">{{ money(summary.settledAmount) }}</div>
+        <div class="summary-label text-3">佣金金额</div>
+        <div class="summary-value brand">{{ money(summary?.commission) }}</div>
       </div>
       <div class="summary-card">
-        <div class="summary-label text-3">已驳回</div>
-        <div class="summary-value danger">{{ summary.rejected }}</div>
+        <div class="summary-label text-3">待结算金额</div>
+        <div class="summary-value warning">{{ money(summary?.pendingAmount) }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label text-3">已结算金额</div>
+        <div class="summary-value success">{{ money(summary?.settledAmount) }}</div>
       </div>
     </div>
 
-    <!-- 状态 Tab -->
-    <div class="card status-tabs rise-in" style="animation-delay: 40ms">
-      <button
-        v-for="tab in statusTabs" :key="String(tab.value)"
-        :class="['status-tab', { active: filters.status === tab.value }]"
-        @click="filters.status = tab.value as any"
-      >
-        {{ tab.label }}
-        <span class="tab-count">{{ tab.count }}</span>
-      </button>
+    <!-- 筛选面板 -->
+    <div class="card filter-card rise-in" style="animation-delay: 40ms">
+      <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />
+      <FilterRow v-model="dateRow" label="成交日期" :options="DATE_PRESETS" single>
+        <NDatePicker
+          :value="filters.dateRange"
+          type="daterange"
+          clearable
+          size="small"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          class="date-pick"
+          @update:value="onPickRange"
+        />
+      </FilterRow>
+      <FilterRow v-model="sortRow" label="排序" :options="SORT_OPTIONS" single all-label="默认" />
     </div>
 
     <!-- 工具栏 -->
@@ -420,21 +435,15 @@ onMounted(async () => {
       <NInput v-model:value="filters.keyword" placeholder="搜索学生姓名、机构名" clearable class="search">
         <template #prefix><Search :size="16" :stroke-width="1.75" class="text-3" /></template>
       </NInput>
-      <NSelect id="deal-sort" v-model:value="sortValue" :options="SORT_OPTIONS" class="sel" />
-      <NDatePicker v-model:value="filters.dateRange" type="daterange" clearable placeholder="成交日期范围" class="date-pick" />
       <button v-if="hasFilter" class="link-btn reset" @click="resetFilters">
         <RotateCcw :size="14" /> 重置
       </button>
 
       <div class="toolbar-right">
-        <!-- 批量操作 -->
         <template v-if="checkedKeys.length > 0">
           <span class="text-2">已选 {{ checkedKeys.length }} 条</span>
-          <button v-if="canAudit && filters.status === DealStatus.PENDING_AUDIT" class="btn btn-sm" @click="doBatchApprove">
-            <CheckCircle2 :size="14" /> 批量通过
-          </button>
-          <button v-if="canSettle && filters.status === DealStatus.PENDING_PAYMENT" class="btn btn-sm" @click="openSettle">
-            <Wallet :size="14" /> 批量结算
+          <button v-if="canSettle" class="btn btn-sm" @click="openSettle(checkedKeys as string[])">
+            <Wallet :size="14" /> 批量确认到账
           </button>
         </template>
 
@@ -469,47 +478,16 @@ onMounted(async () => {
     <!-- 录入成交 Modal -->
     <DealCreateModal v-model:show="showCreate" @created="reload" />
 
-    <!-- 审核弹窗 -->
-    <NModal v-model:show="showAudit" preset="card" title="审核成交" style="max-width: 480px">
-      <div v-if="auditTarget" class="audit-info">
-        <div class="audit-row">
-          <span class="text-3">学生</span><span>{{ auditTarget.studentName }}</span>
-        </div>
-        <div class="audit-row">
-          <span class="text-3">机构</span><span>{{ auditTarget.orgName }}</span>
-        </div>
-        <div class="audit-row">
-          <span class="text-3">成交额</span><span class="num">{{ money(auditTarget.amount) }}</span>
-        </div>
-        <div class="audit-row">
-          <span class="text-3">佣金</span><span class="num">{{ money(auditTarget.commission) }}（{{ auditTarget.rate }}%）</span>
-        </div>
-        <div class="audit-divider" />
-        <NInput v-model:value="rejectReason" type="textarea" placeholder="驳回原因（仅驳回时必填）" :autosize="{ minRows: 2, maxRows: 4 }" />
-      </div>
-      <template #action>
-        <div style="display: flex; gap: 8px; justify-content: flex-end">
-          <button class="btn btn-ghost" @click="showAudit = false">取消</button>
-          <button class="btn btn-danger" @click="doAudit('reject')">
-            <XCircle :size="14" /> 驳回
-          </button>
-          <button class="btn" @click="doAudit('approve')">
-            <CheckCircle2 :size="14" /> 通过
-          </button>
-        </div>
-      </template>
-    </NModal>
-
     <!-- 结算弹窗 -->
-    <NModal v-model:show="showSettle" preset="card" title="批量结算" style="max-width: 460px">
+    <NModal v-model:show="showSettle" preset="card" title="确认到账" style="max-width: 460px">
       <div class="settle-body">
-        <p>即将结算 <strong>{{ checkedKeys.length }}</strong> 条成交记录。</p>
+        <p>确认 <strong>{{ settleIds.length }}</strong> 笔成交的佣金已到账，确认后状态变为「已结算」。</p>
         <NForm label-placement="left" label-width="80" :show-feedback="false">
-          <NFormItem label="结算日期" required>
+          <NFormItem label="到账日期" required>
             <NDatePicker v-model:value="settleForm.settledAt" type="date" style="width: 100%" />
           </NFormItem>
           <NFormItem label="备注">
-            <NInput v-model:value="settleForm.settleNote" placeholder="结算备注（可选）" maxlength="500" />
+            <NInput v-model:value="settleForm.settleNote" placeholder="备注（可选）" maxlength="500" />
           </NFormItem>
         </NForm>
       </div>
@@ -517,7 +495,7 @@ onMounted(async () => {
         <div style="display: flex; gap: 8px; justify-content: flex-end">
           <button class="btn btn-ghost" @click="showSettle = false">取消</button>
           <button class="btn" @click="doSettle">
-            <Wallet :size="14" /> 确认结算
+            <Wallet :size="14" /> 确认到账
           </button>
         </div>
       </template>
@@ -537,7 +515,7 @@ onMounted(async () => {
 }
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -554,6 +532,12 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 .summary-value.warning { color: var(--warning); }
+.summary-value.brand { color: var(--brand); }
+.summary-unit { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
+.filter-card { padding: 4px 16px; margin-bottom: 12px; }
+@media (max-width: 900px) {
+  .summary-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .summary-value.info { color: var(--info); }
 .summary-value.success { color: var(--success); }
 .summary-value.danger { color: var(--danger); }
@@ -600,7 +584,7 @@ onMounted(async () => {
 }
 .search { flex: 1; min-width: 200px; max-width: 340px; }
 .sel { width: 200px; }
-.date-pick { width: 240px; }
+.date-pick { width: 260px; }
 .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .table-card { margin-top: 12px; overflow: hidden; }

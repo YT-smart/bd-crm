@@ -9,7 +9,8 @@ export interface FilterOption {
   count?: number;
 }
 
-const props = defineProps<{ label: string; options: readonly FilterOption[]; single?: boolean }>();
+/** allLabel：第一个按钮的文字，默认「不限」（比如排序行写「默认」） */
+const props = defineProps<{ label: string; options: readonly FilterOption[]; single?: boolean; allLabel?: string }>();
 const model = defineModel<string[]>({ required: true });
 
 function toggle(v: string) {
@@ -22,7 +23,7 @@ function toggle(v: string) {
   <div class="frow">
     <div class="frow-label">{{ props.label }}：</div>
     <div class="frow-opts">
-      <button type="button" :class="['fopt', { on: !model.length }]" @click="model = []">不限</button>
+      <button type="button" :class="['fopt', { on: !model.length }]" @click="model = []">{{ props.allLabel ?? '不限' }}</button>
       <button
         v-for="o in props.options"
         :key="o.value"

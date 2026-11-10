@@ -37,7 +37,7 @@ export const ORG_STATUS_LABEL: Record<OrgStatus, string> = {
   TERMINATED: '终止',
 };
 
-/** 待审核 / 已驳回 / 待到账 / 已结算 */
+/** 待到账 / 已结算（待审核、已驳回是以前的审核流程留下的，已不再使用） */
 export const DealStatus = {
   PENDING_AUDIT: 'PENDING_AUDIT',
   REJECTED: 'REJECTED',
@@ -52,6 +52,9 @@ export const DEAL_STATUS_LABEL: Record<DealStatus, string> = {
   PENDING_PAYMENT: '待到账',
   SETTLED: '已结算',
 };
+
+/** 现在用到的成交状态（筛选、下拉用） */
+export const ACTIVE_DEAL_STATUSES = [DealStatus.PENDING_PAYMENT, DealStatus.SETTLED] as const;
 
 /** 已核实的成交（计入成交额统计） */
 export const APPROVED_DEAL_STATUSES: readonly DealStatus[] = [
