@@ -71,14 +71,15 @@ function onStatusChange() {
 onMounted(load);
 
 const columns = computed<DataTableColumns<DealListItem>>(() => [
-  { title: '成交日期', key: 'dealAt', width: 96, render: (r) => h('span', { class: 'num', style: 'white-space:nowrap' }, date(r.dealAt)) },
-  { title: '学员', key: 'studentName', width: 72, ellipsis: { tooltip: true } },
-  { title: '产品', key: 'productName', minWidth: 110, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
-  { title: '成交金额', key: 'amount', width: 96, align: 'right', render: (r) => h('span', { class: 'num' }, money(r.amount)) },
-  { title: '比例', key: 'rate', width: 56, align: 'right', render: (r) => h('span', { class: 'num text-2' }, `${r.rate}%`) },
-  { title: '佣金', key: 'commission', width: 88, align: 'right', render: (r) => h('span', { class: 'num strong' }, money(r.commission)) },
-  { title: '状态', key: 'status', width: 80, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
-  ...(isAdmin.value ? [{ title: '录入人', key: 'createdByName', width: 72, ellipsis: { tooltip: true } }] : []),
+  // 列都只给最小宽度：卡片变宽时多出来的空间平均分给各列，不会集中在某一列留出大片空白
+  { title: '成交日期', key: 'dealAt', minWidth: 96, render: (r) => h('span', { class: 'num', style: 'white-space:nowrap' }, date(r.dealAt)) },
+  { title: '学员', key: 'studentName', minWidth: 72, ellipsis: { tooltip: true } },
+  { title: '产品', key: 'productName', minWidth: 120, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
+  { title: '成交金额', key: 'amount', minWidth: 96, align: 'right', render: (r) => h('span', { class: 'num' }, money(r.amount)) },
+  { title: '比例', key: 'rate', minWidth: 60, align: 'right', render: (r) => h('span', { class: 'num text-2' }, `${r.rate}%`) },
+  { title: '佣金', key: 'commission', minWidth: 88, align: 'right', render: (r) => h('span', { class: 'num strong' }, money(r.commission)) },
+  { title: '状态', key: 'status', minWidth: 84, align: 'center', render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
+  ...(isAdmin.value ? [{ title: '录入人', key: 'createdByName', minWidth: 72, ellipsis: { tooltip: true } }] : []),
 ]);
 </script>
 
