@@ -33,12 +33,16 @@ export const PERM = {
   DEAL_CREATE: 'deal:create',
   DEAL_AUDIT: 'deal:audit',
   DEAL_SETTLE: 'deal:settle',
+  /** 导出成交（管理员；机构导出自己的） */
+  DEAL_EXPORT: 'deal:export',
 
   /** 客户线索：查看 / 录入 / 跟进自己的线索（员工、管理员） */
   LEAD_VIEW: 'lead:view',
   LEAD_EDIT: 'lead:edit',
   /** 查看全部线索、分配跟进人、删除线索（仅管理员）；没有该权限只能看自己录入或分给自己的 */
   LEAD_MANAGE: 'lead:manage',
+  /** 导出线索（仅管理员） */
+  LEAD_EXPORT: 'lead:export',
 
   LOG_VIEW: 'log:view',
   USER_MANAGE: 'user:manage',
@@ -49,17 +53,17 @@ const ALL_PERMS = Object.values(PERM) as Perm[];
 
 export const ROLE_PERMS: Record<Role, readonly Perm[]> = {
   ADMIN: ALL_PERMS.filter((p) => p !== PERM.DASHBOARD_ORG && p !== PERM.MY_ORG),
-  /** 员工：机构、成交只读（查看 + 导出）；客户线索可以录入和跟进自己的 */
+  /** 员工：机构只读、不能导出；可以录入成交（按约定比例，管理员审核），只看自己录入的；客户线索录入和跟进自己的 */
   STAFF: [
     PERM.DASHBOARD_GLOBAL,
     PERM.ORG_VIEW,
-    PERM.ORG_EXPORT,
     PERM.ORG_REVIEW,
     PERM.DEAL_VIEW,
+    PERM.DEAL_CREATE,
     PERM.LEAD_VIEW,
     PERM.LEAD_EDIT,
   ],
-  ORG: [PERM.DASHBOARD_ORG, PERM.MY_ORG, PERM.DEAL_VIEW, PERM.DEAL_CREATE],
+  ORG: [PERM.DASHBOARD_ORG, PERM.MY_ORG, PERM.DEAL_VIEW, PERM.DEAL_CREATE, PERM.DEAL_EXPORT],
 };
 
 export function permsOf(role: Role): Perm[] {

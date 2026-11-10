@@ -15,7 +15,7 @@ import {
   isCity,
 } from '@bdcrm/shared';
 import type { Request } from 'express';
-import { ok, Errors } from '../lib/http';
+import { AppError, ok, Errors } from '../lib/http';
 import { requirePerm } from '../middlewares/auth';
 import { PASSWORD_RULE } from '../lib/security';
 import { canInline, decodeOriginalName, isPdf, mimeOf, orgImageUploader, orgUploader, removeStoredFile, resolveStorageKey, toStorageKey } from '../lib/storage';
@@ -143,13 +143,9 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
 
 router.get('/:id', requirePerm(...CAN_VIEW), async (req, res) => {
   const detail = await getOrgDetail(req.params.id);
-  // 合作信息（默认佣金、结算周期、合同、收款账户）员工也能看；
-  // 产品单独佣金、合作数据只给管理员，机构账号仍可看自己的
+  // 佣金比例（默认 / 产品）和合作信息员工也能看；整家机构的合作数据只给管理员，机构账号看自己的
   if (!canSeeOrgMoney(req)) {
-    Object.assign(detail, {
-      products: detail.products.map((p) => ({ ...p, rate: null })),
-      stats: { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0, pendingAudit: 0 },
-    });
+    detail.stats = { dealCount: 0, dealAmount: 0, commission: 0, settled: 0, unsettled: 0, pendingAudit: 0 };
   }
   ok(res, detail);
 });
@@ -233,9 +229,27 @@ const ORG_EDITABLE = new Set([
   'businessTypes', 'countries', 'officeCities', 'bankInfo',
 ]);
 
+/** 基本信息必填：提交了这些字段就不能是空的（合作信息等其他卡片单独保存时不带这些字段） */
+const REQUIRED_BASIC: Record<string, string> = {
+  province: '所在省份', city: '总部城市', address: '详细地址', scale: '机构规模', website: '官网',
+  wechat: '公众号', businessTypes: '业务类型', countries: '覆盖国家和地区', officeCities: '校区城市',
+  advantage: '机构一句话优势', intro: '机构简介',
+};
+function assertBasicFilled(input: Record<string, unknown>) {
+  const miss = Object.entries(REQUIRED_BASIC)
+    .filter(([k]) => k in input)
+    .filter(([k]) => {
+      const v = input[k];
+      return v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length);
+    })
+    .map(([, label]) => label);
+  if (miss.length) throw new AppError(400, `请把信息填写完整：${miss.join('、')}`);
+}
+
 router.put('/:id', requirePerm(...CAN_EDIT), async (req, res) => {
   const orgId = req.params.id;
   let input = updateSchema.parse(req.body);
+  assertBasicFilled(input);
   if (req.user!.role === 'ORG') {
     input = Object.fromEntries(Object.entries(input).filter(([k]) => ORG_EDITABLE.has(k))) as typeof input;
   }
@@ -267,9 +281,9 @@ router.delete('/:id', requirePerm(PERM.ORG_DELETE), async (req, res) => {
 
 const contactSchema = z.object({
   name: z.string().trim().min(1, '姓名不能为空').max(30),
-  title: z.string().max(50).nullish(),
-  phone: z.string().max(20).nullish(),
-  wechat: z.string().max(50).nullish(),
+  title: z.string({ required_error: '职务不能为空' }).trim().min(1, '职务不能为空').max(50),
+  phone: z.string({ required_error: '电话不能为空' }).trim().min(1, '电话不能为空').max(20),
+  wechat: z.string({ required_error: '微信不能为空' }).trim().min(1, '微信不能为空').max(50),
   email: z.string().email().max(100).nullish().or(z.literal('')),
   isPrimary: z.boolean().optional(),
 });
@@ -298,17 +312,21 @@ router.delete('/:id/contacts/:contactId', requirePerm(...CAN_EDIT), async (req, 
 const productSchema = z.object({
   name: z.string().trim().min(1).max(100),
   type: businessTypeSchema,
-  level: z.number().int().refine((v) => (PRODUCT_LEVELS as readonly number[]).includes(v), '推荐级别只能是 1-4').nullish(),
-  priceMin: z.number().min(0).nullish(),
-  priceMax: z.number().min(0).nullish(),
+  level: z.number({ required_error: '请选择推荐级别', invalid_type_error: '请选择推荐级别' }).int().refine((v) => (PRODUCT_LEVELS as readonly number[]).includes(v), '推荐级别只能是 1-4'),
+  priceMin: z.number({ required_error: '请填写最低报价', invalid_type_error: '请填写最低报价' }).min(0),
+  priceMax: z.number({ required_error: '请填写最高报价', invalid_type_error: '请填写最高报价' }).min(0),
   rate: z.number().min(0).max(100).nullish(),
-  grades: z.array(z.string().trim().min(1).max(20)).max(20).optional(),
-  note: z.string().max(500).nullish(),
+  grades: z.array(z.string().trim().min(1).max(20), { required_error: '请选择客户年级' }).min(1, '请选择客户年级').max(20),
+  note: z.string({ required_error: '请填写备注说明', invalid_type_error: '请填写备注说明' }).trim().min(1, '请填写备注说明').max(500),
 });
+const checkPriceRange = (p: { priceMin?: number; priceMax?: number }) => {
+  if (p.priceMin != null && p.priceMax != null && p.priceMin > p.priceMax) throw new AppError(400, '最低报价不能高于最高报价');
+};
 
 router.post('/:id/products', requirePerm(...CAN_EDIT), async (req, res) => {
   const orgId = req.params.id;
   const input = productSchema.parse(req.body);
+  checkPriceRange(input);
   const product = await addProduct(orgId, input);
   writeAudit(req, { module: 'org', action: 'addProduct', targetId: orgId, after: input });
   ok(res, { id: product.id }, 201);
@@ -316,6 +334,7 @@ router.post('/:id/products', requirePerm(...CAN_EDIT), async (req, res) => {
 
 router.put('/:id/products/:productId', requirePerm(...CAN_EDIT), async (req, res) => {
   const input = productSchema.partial().parse(req.body);
+  checkPriceRange(input);
   await updateProduct(req.params.id, req.params.productId, input);
   writeAudit(req, { module: 'org', action: 'updateProduct', targetId: req.params.id, after: input });
   ok(res, null);

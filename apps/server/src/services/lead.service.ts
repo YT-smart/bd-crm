@@ -344,7 +344,8 @@ export async function signLead(id: string, input: LeadSignInput, userId: string,
     commission: input.commission,
     note: input.note ?? null,
     createdById: userId,
-    enforceAgreedRate: false,
+    // 员工按合作约定比例计算佣金；管理员可以自定
+    enforceAgreedRate: !!scope.userId,
   });
   const now = new Date();
   // 只认领还没签约的线索：两个人同时点「登记签约」时，后到的那笔成交撤回

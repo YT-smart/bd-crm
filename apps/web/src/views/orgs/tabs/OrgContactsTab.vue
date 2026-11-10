@@ -57,7 +57,12 @@ function openEdit(c: OrgContactItem) {
 }
 
 async function save() {
-  if (!form.name.trim()) { message.warning('姓名不能为空'); return; }
+  const miss: string[] = [];
+  if (!form.name.trim()) miss.push('姓名');
+  if (!form.title?.trim()) miss.push('职务');
+  if (!form.phone?.trim()) miss.push('电话');
+  if (!form.wechat?.trim()) miss.push('微信');
+  if (miss.length) { message.warning(`请把联系人信息填写完整：${miss.join('、')}`); return; }
   saving.value = true;
   try {
     if (editing.value) {
@@ -151,13 +156,13 @@ function handleDelete(c: OrgContactItem) {
         <NFormItem label="姓名" required>
           <NInput v-model:value="form.name" placeholder="姓名" maxlength="30" />
         </NFormItem>
-        <NFormItem label="职务">
+        <NFormItem label="职务" required>
           <NInput v-model:value="form.title" placeholder="职务" maxlength="50" />
         </NFormItem>
-        <NFormItem label="电话">
+        <NFormItem label="电话" required>
           <NInput v-model:value="form.phone" placeholder="电话" maxlength="20" />
         </NFormItem>
-        <NFormItem label="微信">
+        <NFormItem label="微信" required>
           <NInput v-model:value="form.wechat" placeholder="微信号" maxlength="50" />
         </NFormItem>
         <NFormItem label="邮箱">

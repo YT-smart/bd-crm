@@ -11,12 +11,15 @@ import { dealApi, leadApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { date, dateTime } from '@/utils/format';
 import { pushPill } from './leadStyle';
+import { useAuthStore } from '@/stores/auth';
 
 const props = defineProps<{ leadId: string | null; canSign: boolean }>();
 const show = defineModel<boolean>('show', { required: true });
 const emit = defineEmits<{ edit: [lead: LeadDetail]; changed: [] }>();
 const message = useMessage();
 const router = useRouter();
+/** 只有管理员能自定佣金；员工按合作约定比例（后端同样强制） */
+const lockRate = useAuthStore().user?.role !== 'ADMIN';
 
 const lead = ref<LeadDetail | null>(null);
 const loading = ref(false);
@@ -78,7 +81,7 @@ watch(() => sign.orgId, () => {
 });
 watch(() => sign.productId, (pid) => {
   const p = signOrg.value?.products.find((x) => x.id === pid);
-  if (p?.rate != null) sign.rate = p.rate;
+  if (signOrg.value) sign.rate = p?.rate ?? signOrg.value.defaultRate;
 });
 watch(() => [sign.amount, sign.rate], () => { sign.commission = Math.round(sign.amount * sign.rate) / 100; });
 
@@ -216,12 +219,12 @@ const join = (arr: string[]) => (arr.length ? arr.join('、') : '--');
         </NInputNumber>
       </NFormItem>
       <NFormItem label="佣金比例">
-        <NInputNumber v-model:value="sign.rate" :min="0" :max="100" :precision="1" style="width: 160px">
+        <NInputNumber v-model:value="sign.rate" :min="0" :max="100" :precision="1" style="width: 160px" :disabled="lockRate">
           <template #suffix>%</template>
         </NInputNumber>
       </NFormItem>
       <NFormItem label="佣金金额">
-        <NInputNumber v-model:value="sign.commission" :min="0" :precision="2" style="width: 160px">
+        <NInputNumber v-model:value="sign.commission" :min="0" :precision="2" style="width: 160px" :disabled="lockRate">
           <template #prefix>¥</template>
         </NInputNumber>
       </NFormItem>

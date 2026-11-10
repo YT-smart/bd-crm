@@ -3,7 +3,7 @@ import { computed, h, reactive, ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NDataTable, NInput, NSelect, NDatePicker, NModal,
-  NForm, NFormItem, NInputNumber, NTag, useMessage, useDialog,
+  NForm, NFormItem, NTag, useMessage, useDialog,
   type DataTableColumns, type DataTableRowKey,
 } from 'naive-ui';
 import { useDebounceFn } from '@vueuse/core';
@@ -13,10 +13,11 @@ import {
 } from 'lucide-vue-next';
 import {
   DealStatus, DEAL_STATUS_LABEL, PERM,
-  type DealListItem, type DealListQuery, type DealSummary, type OrgOption,
+  type DealListItem, type DealListQuery, type DealSummary,
 } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
+import DealCreateModal from '@/components/DealCreateModal.vue';
 import { useAuthStore } from '@/stores/auth';
 import StatusTag from '@/components/StatusTag.vue';
 import { date, money, num } from '@/utils/format';
@@ -145,83 +146,12 @@ const sortValue = computed({
 });
 
 /* ---------- 机构选项 ---------- */
-const orgOptions = ref<OrgOption[]>([]);
-const orgSelectOptions = computed(() => orgOptions.value.map((o) => ({ label: o.name, value: o.id })));
 
-async function loadOrgOptions() {
-  try { orgOptions.value = await dealApi.orgOptions(); } catch {}
-}
 
-/* ---------- 录入 Drawer ---------- */
+/* ---------- 录入成交 ---------- */
 const showCreate = ref(false);
-const creating = ref(false);
-const createForm = reactive({
-  orgId: null as string | null,
-  productId: null as string | null,
-  studentName: '',
-  studentPhone: '',
-  dealAt: Date.now() as number | null,
-  amount: 0,
-  rate: 15,
-  commission: 0,
-});
-
-const isOrgUser = computed(() => auth.user?.role === 'ORG');
-const selectedOrg = computed(() => orgOptions.value.find((o) => o.id === createForm.orgId));
-const productOptions = computed(() =>
-  selectedOrg.value?.products.map((p) => ({ label: `${p.name}（${p.type}）`, value: p.id })) ?? [],
-);
-
-watch(() => createForm.orgId, () => {
-  createForm.productId = null;
-  if (selectedOrg.value) createForm.rate = selectedOrg.value.defaultRate;
-});
-watch(() => createForm.productId, (pid) => {
-  if (!pid || !selectedOrg.value) return;
-  const p = selectedOrg.value.products.find((x) => x.id === pid);
-  if (p?.rate != null) createForm.rate = p.rate;
-});
-watch(
-  () => [createForm.amount, createForm.rate],
-  () => { createForm.commission = Math.round(createForm.amount * createForm.rate) / 100; },
-);
-
 function openCreate() {
-  Object.assign(createForm, {
-    orgId: auth.user?.role === 'ORG' ? auth.user.orgId : null,
-    productId: null, studentName: '', studentPhone: '',
-    dealAt: Date.now(), amount: 0, rate: 15, commission: 0,
-  });
-  // orgId 未变化时 watch 不会触发（机构账号再次打开），这里主动取约定比例
-  if (selectedOrg.value) createForm.rate = selectedOrg.value.defaultRate;
   showCreate.value = true;
-}
-
-async function submitCreate() {
-  if (!createForm.orgId) { message.warning('请选择机构'); return; }
-  if (!createForm.studentName.trim()) { message.warning('请输入学生姓名'); return; }
-  if (!createForm.dealAt) { message.warning('请选择成交日期'); return; }
-  if (createForm.amount <= 0) { message.warning('成交金额须大于0'); return; }
-  creating.value = true;
-  try {
-    await dealApi.create({
-      orgId: createForm.orgId,
-      productId: createForm.productId,
-      studentName: createForm.studentName.trim(),
-      studentPhone: createForm.studentPhone.trim() || undefined,
-      dealAt: new Date(createForm.dealAt).toISOString(),
-      amount: createForm.amount,
-      rate: createForm.rate,
-      commission: createForm.commission,
-    });
-    message.success('成交已录入');
-    showCreate.value = false;
-    reload();
-  } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '录入失败');
-  } finally {
-    creating.value = false;
-  }
 }
 
 /* ---------- 审核弹窗 ---------- */
@@ -441,7 +371,7 @@ const hasFilter = computed(() => !!(filters.keyword || filters.dateRange));
 
 /* ---------- 初始化 ---------- */
 onMounted(async () => {
-  await Promise.all([loadSummary(), load(), loadOrgOptions()]);
+  await Promise.all([loadSummary(), load()]);
 });
 </script>
 
@@ -508,7 +438,7 @@ onMounted(async () => {
           </button>
         </template>
 
-        <button class="btn btn-ghost btn-sm" @click="handleExport">
+        <button v-if="auth.can(PERM.DEAL_EXPORT)" class="btn btn-ghost btn-sm" @click="handleExport">
           <Download :size="14" /> 导出
         </button>
         <button v-if="canCreate" class="btn btn-sm" @click="openCreate">
@@ -537,60 +467,7 @@ onMounted(async () => {
     </div>
 
     <!-- 录入成交 Modal -->
-    <NModal v-model:show="showCreate" preset="card" title="录入成交" style="max-width: 560px">
-      <NForm label-placement="left" label-width="80" :show-feedback="false">
-        <NFormItem label="机构" required>
-          <NSelect
-            v-model:value="createForm.orgId"
-            :options="orgSelectOptions"
-            filterable
-            placeholder="选择机构"
-            :disabled="auth.user?.role === 'ORG'"
-          />
-        </NFormItem>
-        <NFormItem v-if="productOptions.length" label="产品">
-          <NSelect v-model:value="createForm.productId" :options="productOptions" clearable placeholder="选择产品（可选）" />
-        </NFormItem>
-        <NFormItem label="学生姓名" required>
-          <NInput v-model:value="createForm.studentName" placeholder="学生姓名" maxlength="50" />
-        </NFormItem>
-        <NFormItem label="学生电话">
-          <NInput v-model:value="createForm.studentPhone" placeholder="手机号" maxlength="20" />
-        </NFormItem>
-        <NFormItem label="成交日期" required>
-          <NDatePicker v-model:value="createForm.dealAt" type="date" style="width: 100%" />
-        </NFormItem>
-        <NFormItem label="成交金额" required>
-          <NInputNumber v-model:value="createForm.amount" :min="0" :precision="0" placeholder="金额" style="width: 100%">
-            <template #prefix>¥</template>
-          </NInputNumber>
-        </NFormItem>
-        <NFormItem label="佣金比例">
-          <div class="inline-field">
-            <NInputNumber v-model:value="createForm.rate" :min="0" :max="100" :precision="1" placeholder="比例" style="width: 160px" :disabled="isOrgUser">
-              <template #suffix>%</template>
-            </NInputNumber>
-            <span class="text-3 field-hint">{{ isOrgUser ? '按合作约定比例' : '默认取机构佣金比例' }}</span>
-          </div>
-        </NFormItem>
-        <NFormItem label="佣金金额">
-          <div class="inline-field">
-            <NInputNumber v-model:value="createForm.commission" :min="0" :precision="2" placeholder="佣金" style="width: 160px" :disabled="isOrgUser">
-              <template #prefix>¥</template>
-            </NInputNumber>
-            <span class="text-3 field-hint">{{ isOrgUser ? '系统自动计算' : '按比例自动计算，可手动修改' }}</span>
-          </div>
-        </NFormItem>
-      </NForm>
-      <template #action>
-        <div style="display: flex; gap: 8px; justify-content: flex-end">
-          <button class="btn btn-ghost" @click="showCreate = false">取消</button>
-          <button class="btn" :disabled="creating" @click="submitCreate">
-            {{ creating ? '提交中...' : '提交' }}
-          </button>
-        </div>
-      </template>
-    </NModal>
+    <DealCreateModal v-model:show="showCreate" @created="reload" />
 
     <!-- 审核弹窗 -->
     <NModal v-model:show="showAudit" preset="card" title="审核成交" style="max-width: 480px">

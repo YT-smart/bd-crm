@@ -316,12 +316,13 @@ export async function updateDeal(
     commission?: number;
     note?: string | null;
   },
-  /** 机构只能改自己的 */
-  scopeOrgId?: string,
+  /** orgId：机构只能改自己的；userId：员工只能改自己录入的；enforceAgreedRate：按约定比例重算佣金 */
+  scope: { orgId?: string; userId?: string; enforceAgreedRate?: boolean } = {},
 ) {
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
   if (!deal) throw new AppError(404, '成交记录不存在');
-  if (scopeOrgId && deal.orgId !== scopeOrgId) throw new AppError(403, '无权修改');
+  if (scope.orgId && deal.orgId !== scope.orgId) throw new AppError(403, '无权修改');
+  if (scope.userId && deal.createdById !== scope.userId) throw new AppError(403, '只能修改自己录入的成交');
   if (deal.status !== DealStatus.PENDING_AUDIT && deal.status !== DealStatus.REJECTED) {
     throw new AppError(400, '只能修改待审核或已驳回的成交记录');
   }
@@ -342,8 +343,8 @@ export async function updateDeal(
   if (input.amount !== undefined) data.amount = input.amount;
   if (input.note !== undefined) data.note = input.note;
 
-  if (scopeOrgId) {
-    // 机构账号：比例与佣金始终按约定重新计算
+  if (scope.enforceAgreedRate) {
+    // 机构、员工：比例与佣金始终按约定重新计算
     const productId = input.productId !== undefined ? input.productId : deal.productId;
     if (productRate === undefined && productId) {
       const p = await prisma.orgProduct.findUnique({ where: { id: productId } });

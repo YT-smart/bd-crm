@@ -64,7 +64,7 @@ const querySchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
 });
 
-router.get('/export', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
+router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
   const q = querySchema.parse(req.query);
   const rows = await exportDeals(q, dealScope(req));
 
@@ -114,7 +114,8 @@ router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
     throw Errors.forbidden('只能为本机构录入成交');
   }
 
-  const deal = await createDeal({ ...input, createdById: req.user!.id, enforceAgreedRate: req.user!.role === 'ORG' });
+  // 只有管理员能自定佣金比例 / 金额；员工、机构按合作约定比例计算
+  const deal = await createDeal({ ...input, createdById: req.user!.id, enforceAgreedRate: req.user!.role !== 'ADMIN' });
   writeAudit(req, {
     module: 'deal',
     action: 'create',
@@ -140,8 +141,13 @@ const updateSchema = z.object({
 
 router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const input = updateSchema.parse(req.body);
-  const scopeOrgId = req.user!.role === 'ORG' ? req.user!.orgId! : undefined;
-  await updateDeal(req.params.id, input, scopeOrgId);
+  const u = req.user!;
+  await updateDeal(req.params.id, input, {
+    // 机构只能改本机构的；员工只能改自己录入的
+    orgId: u.role === 'ORG' ? u.orgId! : undefined,
+    userId: u.role === 'STAFF' ? u.id : undefined,
+    enforceAgreedRate: u.role !== 'ADMIN',
+  });
   writeAudit(req, { module: 'deal', action: 'update', targetId: req.params.id, after: input });
   ok(res, { id: req.params.id });
 });

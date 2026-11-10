@@ -78,7 +78,7 @@ router.get('/filter-options', requirePerm(PERM.LEAD_VIEW), async (req, res) => {
   ok(res, await leadFilterOptions(leadScope(req)));
 });
 
-router.get('/export', requirePerm(PERM.LEAD_VIEW), async (req, res) => {
+router.get('/export', requirePerm(PERM.LEAD_EXPORT), async (req, res) => {
   const rows = await exportLeads(querySchema.parse(req.query), leadScope(req));
   const data = rows.map((l) => ({
     学生姓名: l.studentName,

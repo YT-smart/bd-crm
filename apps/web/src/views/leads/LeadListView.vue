@@ -370,7 +370,7 @@ onMounted(() => {
           <span class="text-2">已选 {{ checkedKeys.length }} 条</span>
           <button id="lead-assign" class="btn btn-ghost btn-sm" @click="openAssign"><UserPlus :size="14" /> 分配跟进人</button>
         </template>
-        <button class="btn btn-ghost btn-sm" @click="handleExport"><Download :size="14" /> 导出</button>
+        <button v-if="auth.can(PERM.LEAD_EXPORT)" class="btn btn-ghost btn-sm" @click="handleExport"><Download :size="14" /> 导出</button>
         <button v-if="canEdit" id="lead-create" class="btn btn-sm" @click="openCreate"><Plus :size="14" /> 新增线索</button>
       </div>
     </div>

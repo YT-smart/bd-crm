@@ -90,7 +90,16 @@ async function save() {
   const type = (form.type === OTHER ? customType.value : form.type ?? '').trim();
   if (!type) { message.warning(form.type === OTHER ? '请填写自定义的业务类型' : '请选择业务类型'); return; }
   if (type.length > BUSINESS_TYPE_MAX_LEN) { message.warning(`业务类型请控制在 ${BUSINESS_TYPE_MAX_LEN} 字以内`); return; }
-  const payload = { ...form, type };
+  // 产品信息必须填完整（佣金比例留空按默认，不算）
+  const miss: string[] = [];
+  if (form.level == null) miss.push('推荐级别');
+  if (!form.grades?.length) miss.push('客户年级');
+  if (form.priceMin == null) miss.push('最低报价');
+  if (form.priceMax == null) miss.push('最高报价');
+  if (!form.note?.trim()) miss.push('备注说明');
+  if (miss.length) { message.warning(`请把产品信息填写完整：${miss.join('、')}`); return; }
+  if (form.priceMin! > form.priceMax!) { message.warning('最低报价不能高于最高报价'); return; }
+  const payload = { ...form, type, note: form.note!.trim() };
   saving.value = true;
   try {
     if (editing.value) {
@@ -199,7 +208,7 @@ function handleDelete(p: OrgProductItem) {
             placeholder="填写业务类型，如：夏令营、艺术留学"
           />
         </NFormItem>
-        <NFormItem label="推荐级别">
+        <NFormItem label="推荐级别" required>
           <NSelect
             id="product-level"
             v-model:value="form.level"
@@ -209,7 +218,7 @@ function handleDelete(p: OrgProductItem) {
             style="width: 300px"
           />
         </NFormItem>
-        <NFormItem label="客户年级">
+        <NFormItem label="客户年级" required>
           <NSelect
             id="product-grades"
             v-model:value="form.grades"
@@ -222,10 +231,10 @@ function handleDelete(p: OrgProductItem) {
           />
         </NFormItem>
         <div style="display: flex; gap: 16px">
-          <NFormItem label="最低报价" style="flex: 1">
+          <NFormItem label="最低报价" required style="flex: 1">
             <NInputNumber v-model:value="form.priceMin" :min="0" :precision="0" placeholder="最低价" style="width: 100%" />
           </NFormItem>
-          <NFormItem label="最高报价" style="flex: 1">
+          <NFormItem label="最高报价" required style="flex: 1">
             <NInputNumber v-model:value="form.priceMax" :min="0" :precision="0" placeholder="最高价" style="width: 100%" />
           </NFormItem>
         </div>
@@ -242,8 +251,8 @@ function handleDelete(p: OrgProductItem) {
             <template #suffix>%</template>
           </NInputNumber>
         </NFormItem>
-        <NFormItem label="备注">
-          <NInput v-model:value="form.note" type="textarea" placeholder="备注说明" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="500" />
+        <NFormItem label="备注说明" required>
+          <NInput v-model:value="form.note" type="textarea" placeholder="产品内容、服务方式、适合的学生等" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="500" />
         </NFormItem>
       </NForm>
       <template #action>

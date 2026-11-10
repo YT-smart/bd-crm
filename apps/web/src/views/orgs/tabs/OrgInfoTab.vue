@@ -147,27 +147,51 @@ const isDirty = computed(() => {
   );
 });
 
+/** 基本信息必须全部填写（等级、标签是内部字段，二维码单独上传，不在此列） */
+function missingFields(): string[] {
+  const blank = (v: string | null) => !v || !v.trim();
+  const miss: string[] = [];
+  if (blank(form.name)) miss.push('机构名称');
+  if (!form.province) miss.push('所在省份');
+  if (!form.city) miss.push('总部城市');
+  if (blank(form.address)) miss.push('详细地址');
+  if (blank(form.scale)) miss.push('机构规模');
+  if (blank(form.website)) miss.push('官网');
+  if (blank(form.wechat)) miss.push('公众号');
+  if (!finalBusinessTypes().length) miss.push('业务类型');
+  if (!form.countries.length) miss.push('覆盖国家和地区');
+  if (!form.officeCities.length) miss.push('校区城市');
+  if (blank(form.advantage)) miss.push('机构一句话优势');
+  if (blank(form.intro)) miss.push('机构简介');
+  return miss;
+}
+
 async function save() {
-  if (!form.name.trim()) {
-    message.warning('机构名称不能为空');
-    return;
-  }
   if (form.businessTypes.includes(OTHER) && !customType.value.trim()) {
     message.warning('选择了「其他」，请填写自定义的业务类型');
+    return;
+  }
+  const miss = missingFields();
+  if (miss.length) {
+    message.warning(`请把信息填写完整：${miss.join('、')}`);
+    return;
+  }
+  if (!/^https?:\/\//i.test(form.website.trim())) {
+    message.warning('官网需以 http:// 或 https:// 开头');
     return;
   }
   saving.value = true;
   try {
     await orgApi.update(props.org.id, {
       ...(isOrgUser.value ? {} : { name: form.name, tags: form.tags, level: form.level }),
-      advantage: form.advantage.trim() || null,
-      intro: form.intro || null,
+      advantage: form.advantage.trim(),
+      intro: form.intro.trim(),
       province: form.province,
-      city: form.city || null,
-      address: form.address || null,
-      website: form.website || null,
-      wechat: form.wechat || null,
-      scale: form.scale || null,
+      city: form.city,
+      address: form.address.trim(),
+      website: form.website.trim(),
+      wechat: form.wechat.trim(),
+      scale: form.scale.trim(),
       businessTypes: finalBusinessTypes(),
       countries: form.countries,
       officeCities: form.officeCities,
@@ -189,10 +213,10 @@ async function save() {
         <NFormItem label="机构名称" required>
           <NInput v-model:value="form.name" placeholder="机构名称" maxlength="100" :disabled="isOrgUser || !canEdit" />
         </NFormItem>
-        <NFormItem label="所在省份">
+        <NFormItem label="所在省份" required>
           <NSelect v-model:value="form.province" :options="provinceOptions" clearable filterable placeholder="选择省份" />
         </NFormItem>
-        <NFormItem label="总部城市">
+        <NFormItem label="总部城市" required>
           <NSelect
             id="org-info-city"
             v-model:value="form.city"
@@ -202,25 +226,25 @@ async function save() {
             placeholder="选择总部城市"
           />
         </NFormItem>
-        <NFormItem label="详细地址">
+        <NFormItem label="详细地址" required>
           <NInput v-model:value="form.address" placeholder="详细地址" maxlength="200" />
         </NFormItem>
         <NFormItem v-if="!isOrgUser" label="机构等级">
           <NSelect v-model:value="form.level" :options="levelOptions" clearable placeholder="等级" />
         </NFormItem>
-        <NFormItem label="机构规模">
+        <NFormItem label="机构规模" required>
           <NInput v-model:value="form.scale" placeholder="如: 50-100人" maxlength="50" />
         </NFormItem>
-        <NFormItem label="官网">
+        <NFormItem label="官网" required>
           <NInput v-model:value="form.website" placeholder="https://..." maxlength="200" />
         </NFormItem>
-        <NFormItem label="公众号">
+        <NFormItem label="公众号" required>
           <NInput v-model:value="form.wechat" placeholder="微信公众号名称" maxlength="100" />
         </NFormItem>
         <NFormItem label="公众号二维码" class="full">
           <WechatQr :org-id="org.id" :has="org.hasWechatQr" :can-edit="canEdit" :size="88" @changed="emit('qrChanged')" />
         </NFormItem>
-        <NFormItem label="业务类型" class="full">
+        <NFormItem label="业务类型" class="full" required>
           <NSelect
             v-model:value="form.businessTypes"
             :options="businessTypeOptions"
@@ -237,7 +261,7 @@ async function save() {
             placeholder="填写业务类型，如：夏令营、艺术留学"
           />
         </NFormItem>
-        <NFormItem label="覆盖国家和地区" class="full">
+        <NFormItem label="覆盖国家和地区" class="full" required>
           <NSelect
             v-model:value="form.countries"
             :options="countryOptions"
@@ -246,7 +270,7 @@ async function save() {
             placeholder="选择覆盖国家和地区（可搜索）"
           />
         </NFormItem>
-        <NFormItem label="校区城市" class="full">
+        <NFormItem label="校区城市" class="full" required>
           <NSelect
             id="org-info-office-cities"
             v-model:value="form.officeCities"
@@ -260,7 +284,7 @@ async function save() {
         <NFormItem v-if="!isOrgUser" label="标签" class="full">
           <NDynamicTags v-model:value="form.tags" :max="10" :disabled="!canEdit" />
         </NFormItem>
-        <NFormItem label="机构一句话优势" class="full">
+        <NFormItem label="机构一句话优势" class="full" required>
           <NInput
             id="org-info-advantage"
             v-model:value="form.advantage"
@@ -269,7 +293,7 @@ async function save() {
             show-count
           />
         </NFormItem>
-        <NFormItem label="机构简介" class="full">
+        <NFormItem label="机构简介" class="full" required>
           <NInput v-model:value="form.intro" type="textarea" placeholder="机构简介" :autosize="{ minRows: 3, maxRows: 6 }" maxlength="2000" show-count />
         </NFormItem>
       </div>
