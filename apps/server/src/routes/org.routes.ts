@@ -81,7 +81,7 @@ const listSchema = z.object({
   country: z.enum(COUNTRIES).optional(),
   city: citySchema.optional(),
   businessType: z.string().trim().min(1).max(BUSINESS_TYPE_MAX_LEN).optional(),
-  sort: z.enum(['createdAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate']).optional(),
+  sort: z.enum(['createdAt', 'cooperateAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -133,7 +133,7 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
     ...(withCooperation ? { 结算周期: o.settleCycle ? SETTLE_CYCLE_LABEL[o.settleCycle] : '' } : {}),
     联系人: o.contacts[0]?.name ?? '',
     联系电话: o.contacts[0]?.phone ?? '',
-    入驻时间: fmtDay(o.createdAt),
+    合作时间: fmtDay(o.cooperateAt),
   }));
   writeAudit(req, { module: 'org', action: 'export', targetName: `导出 ${data.length} 条` });
   ok(res, data);
@@ -220,12 +220,13 @@ const updateSchema = z.object({
   }).nullish(),
   contractStart: z.string().datetime().nullish().or(z.literal('')),
   contractEnd: z.string().datetime().nullish().or(z.literal('')),
+  cooperateAt: z.string().datetime({ message: '合作时间格式有误' }).optional(),
   ownerId: z.string().cuid().nullish(),
 });
 
 /** 机构账号只能维护自己的基本资料与收款账户，佣金/等级/状态/负责 BD/合同等由员工维护 */
 const ORG_EDITABLE = new Set([
-  'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale',
+  'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale', 'cooperateAt',
   'businessTypes', 'countries', 'officeCities', 'bankInfo',
 ]);
 
@@ -262,6 +263,7 @@ router.put('/:id', requirePerm(...CAN_EDIT), async (req, res) => {
   else if (input.contractStart) data.contractStart = new Date(input.contractStart);
   if (input.contractEnd === '') data.contractEnd = null;
   else if (input.contractEnd) data.contractEnd = new Date(input.contractEnd);
+  if (input.cooperateAt) data.cooperateAt = new Date(input.cooperateAt);
   if (input.website === '') data.website = null;
 
   const updated = await updateOrg(orgId, data);

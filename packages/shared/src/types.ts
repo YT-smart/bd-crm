@@ -223,6 +223,8 @@ export interface OrgListItem {
   dealAmount: number;
   commission: number;
   lastDealAt: string | null;
+  /** 合作时间 */
+  cooperateAt: string;
   createdAt: string;
 }
 
@@ -239,7 +241,7 @@ export interface OrgListQuery {
   city?: string;
   /** 业务类型 */
   businessType?: string;
-  sort?: 'createdAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate';
+  sort?: 'createdAt' | 'cooperateAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate';
   order?: 'asc' | 'desc';
 }
 
@@ -326,6 +328,8 @@ export interface OrgDetail {
   bankInfo: OrgBankInfo | null;
   contractStart: string | null;
   contractEnd: string | null;
+  /** 合作时间，默认录入时间 */
+  cooperateAt: string;
   ownerId: string | null;
   ownerName: string | null;
   completeness: number;
@@ -398,6 +402,7 @@ export interface OrgUpdateInput {
   bankInfo?: OrgBankInfo | null;
   contractStart?: string | null;
   contractEnd?: string | null;
+  cooperateAt?: string;
   ownerId?: string | null;
 }
 

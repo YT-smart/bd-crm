@@ -178,6 +178,7 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
         dealAmount: num(s?._sum.amount),
         commission: num(s?._sum.commission),
         lastDealAt: s?._max.dealAt?.toISOString() ?? null,
+        cooperateAt: o.cooperateAt.toISOString(),
         createdAt: o.createdAt.toISOString(),
       };
     }),
@@ -300,6 +301,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     bankInfo: org.bankInfo as OrgDetail['bankInfo'],
     contractStart: isoOrNull(org.contractStart),
     contractEnd: isoOrNull(org.contractEnd),
+    cooperateAt: org.cooperateAt.toISOString(),
     ownerId: org.ownerId,
     ownerName: org.owner?.name ?? null,
     completeness: completenessResult.percentage,

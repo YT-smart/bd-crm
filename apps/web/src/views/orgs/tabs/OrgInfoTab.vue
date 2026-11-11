@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
 import {
-  NForm, NFormItem, NInput, NSelect, NDynamicTags, useMessage,
+  NForm, NFormItem, NInput, NDatePicker, NSelect, NDynamicTags, useMessage,
   type SelectOption, type SelectGroupOption,
 } from 'naive-ui';
 import { Save } from 'lucide-vue-next';
@@ -37,6 +37,7 @@ const form = reactive({
   officeCities: [] as string[],
   tags: [] as string[],
   level: null as string | null,
+  cooperateAt: null as number | null,
 });
 
 /** 业务类型下拉里的「其他（自定义）」 */
@@ -64,6 +65,7 @@ function resetForm() {
   form.officeCities = [...props.org.officeCities];
   form.tags = [...props.org.tags];
   form.level = props.org.level;
+  form.cooperateAt = new Date(props.org.cooperateAt).getTime();
   queueMicrotask(() => (resetting = false));
 }
 
@@ -138,6 +140,7 @@ const isDirty = computed(() => {
     form.wechat !== (o.wechat ?? '') ||
     form.scale !== (o.scale ?? '') ||
     form.level !== o.level ||
+    form.cooperateAt !== new Date(o.cooperateAt).getTime() ||
     // 勾了「其他」也算改动，这样点保存时能提示去填写
     form.businessTypes.includes(OTHER) ||
     JSON.stringify(finalBusinessTypes()) !== JSON.stringify(o.businessTypes) ||
@@ -156,6 +159,7 @@ function missingFields(): string[] {
   if (!form.city) miss.push('总部城市');
   if (blank(form.address)) miss.push('详细地址');
   if (blank(form.scale)) miss.push('机构规模');
+  if (!form.cooperateAt) miss.push('合作时间');
   if (blank(form.website)) miss.push('官网');
   if (blank(form.wechat)) miss.push('公众号');
   if (!finalBusinessTypes().length) miss.push('业务类型');
@@ -195,6 +199,7 @@ async function save() {
       businessTypes: finalBusinessTypes(),
       countries: form.countries,
       officeCities: form.officeCities,
+      cooperateAt: new Date(form.cooperateAt!).toISOString(),
     });
     message.success('已保存');
     emit('updated');
@@ -234,6 +239,9 @@ async function save() {
         </NFormItem>
         <NFormItem label="机构规模" required>
           <NInput v-model:value="form.scale" placeholder="如: 50-100人" maxlength="50" />
+        </NFormItem>
+        <NFormItem label="合作时间" required>
+          <NDatePicker v-model:value="form.cooperateAt" type="date" :is-date-disabled="(t: number) => t > Date.now()" style="width: 100%" />
         </NFormItem>
         <NFormItem label="官网" required>
           <NInput v-model:value="form.website" placeholder="https://..." maxlength="200" />

@@ -76,13 +76,9 @@ const emit = defineEmits<{ edit: [] }>();
         <span class="kv-label">机构一句话优势</span>
         <span class="kv-value"><CopyText :value="org.advantage" label="机构一句话优势" /></span>
       </div>
-      <div v-if="internal" class="kv-row">
-        <span class="kv-label">负责人</span>
-        <span class="kv-value"><CopyText :value="org.ownerName" label="负责人" /></span>
-      </div>
       <div class="kv-row">
-        <span class="kv-label">录入时间</span>
-        <span class="kv-value num">{{ date(org.createdAt) }}</span>
+        <span class="kv-label">合作时间</span>
+        <span class="kv-value num">{{ date(org.cooperateAt) }}</span>
       </div>
       <div class="kv-row">
         <span class="kv-label">资料完整度</span>

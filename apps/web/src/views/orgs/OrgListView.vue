@@ -412,13 +412,13 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
     render: (r) => h('span', { class: 'num' }, num(r.dealCount)),
   },
   {
-    title: '入驻时间',
-    key: 'createdAt',
+    title: '合作时间',
+    key: 'cooperateAt',
     minWidth: 130,
     align: 'center',
     sorter: true,
-    sortOrder: sort.value?.key === 'createdAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
-    render: (r) => h('span', { class: 'num text-2', style: 'white-space: nowrap' }, date(r.createdAt)),
+    sortOrder: sort.value?.key === 'cooperateAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
+    render: (r) => h('span', { class: 'num text-2', style: 'white-space: nowrap' }, date(r.cooperateAt)),
   },
 ]);
 

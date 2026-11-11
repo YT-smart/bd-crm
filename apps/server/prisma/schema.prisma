@@ -122,6 +122,7 @@ model Org {
   bankInfo      Json?
   contractStart DateTime?
   contractEnd   DateTime?
+  cooperateAt   DateTime    @default(now()) // 合作时间，默认录入时间，机构可修改
   ownerId       String? // 负责 BD
   owner         User?       @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   completeness  Int         @default(0)
