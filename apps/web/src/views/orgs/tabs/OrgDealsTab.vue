@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, reactive, h, onMounted, computed } from 'vue';
+import { ref, reactive, h, onMounted, computed, watch } from 'vue';
 import { Plus } from 'lucide-vue-next';
 import { NDataTable, NSelect, type DataTableColumns } from 'naive-ui';
-import { ACTIVE_DEAL_STATUSES, DealStatus, DEAL_STATUS_LABEL, type DealListItem } from '@bdcrm/shared';
+import { ACTIVE_DEAL_STATUSES, DealStatus, DEAL_STATUS_LABEL, type DealListItem, type DealSource } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useMessage } from 'naive-ui';
@@ -17,6 +17,8 @@ import { date, money } from '@/utils/format';
  * 员工和管理员都可以在这里直接录入成交。
  */
 const props = defineProps<{ orgId: string; canCreate?: boolean }>();
+/** 录入方筛选（仅管理员）：员工录入 / 机构录入，null 为全部 */
+const source = defineModel<DealSource | null>('source', { default: null });
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.user?.role === 'ADMIN');
 const title = computed(() => (auth.user?.role === 'STAFF' ? '我的成交记录' : '成交记录'));
@@ -41,6 +43,16 @@ const pagination = reactive({
   onUpdatePageSize: (s: number) => { pagination.pageSize = s; pagination.page = 1; load(); },
 });
 
+const SOURCE_OPTIONS: { value: DealSource | null; label: string }[] = [
+  { value: null, label: '全部' },
+  { value: 'STAFF', label: '员工录入' },
+  { value: 'ORG', label: '机构录入' },
+];
+watch(source, () => {
+  pagination.page = 1;
+  load();
+});
+
 const statusOptions = ACTIVE_DEAL_STATUSES.map((k) => ({ label: DEAL_STATUS_LABEL[k], value: k }));
 
 async function load() {
@@ -51,6 +63,7 @@ async function load() {
       page: pagination.page,
       pageSize: pagination.pageSize,
       status: status.value ?? undefined,
+      creatorType: isAdmin.value ? source.value ?? undefined : undefined,
       sort: 'dealAt',
       order: 'desc',
     });
@@ -86,6 +99,18 @@ const columns = computed<DataTableColumns<DealListItem>>(() => [
 <template>
   <OrgCard :title="pagination.itemCount ? `${title}（${pagination.itemCount}）` : title">
     <template #extra>
+      <div v-if="isAdmin" class="segmented seg-sm" role="tablist" aria-label="录入方">
+        <button
+          v-for="o in SOURCE_OPTIONS"
+          :key="o.label"
+          role="tab"
+          :aria-selected="source === o.value"
+          :class="{ active: source === o.value }"
+          @click="source = o.value"
+        >
+          {{ o.label }}
+        </button>
+      </div>
       <button v-if="canCreate" id="org-deal-create" class="btn btn-sm" @click="showCreate = true">
         <Plus :size="14" /> 录入成交
       </button>

@@ -36,8 +36,9 @@ router.get('/summary', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
 });
 
 /* 成交概览：成交额、佣金、成交率等经营数据，仅管理员 */
-router.get('/overview', requirePerm(PERM.DASHBOARD_FINANCE), async (_req, res) => {
-  ok(res, await getDealOverview());
+router.get('/overview', requirePerm(PERM.DASHBOARD_FINANCE), async (req, res) => {
+  const { source } = z.object({ source: z.enum(['STAFF', 'ORG']).optional() }).parse(req.query);
+  ok(res, await getDealOverview(source));
 });
 
 /* ============ 机构选项（录入下拉） ============ */

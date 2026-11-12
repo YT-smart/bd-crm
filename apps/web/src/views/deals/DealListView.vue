@@ -71,7 +71,7 @@ const filters = reactive({
   /** 自定义日期范围（和快捷日期二选一） */
   dateRange: rangeFromQuery(),
   /** 录入方：机构录入 / 员工录入（仅管理员） */
-  creatorType: null as 'ORG' | 'STAFF' | null,
+  creatorType: (['ORG', 'STAFF'].includes(route.query.creator as string) ? route.query.creator : null) as 'ORG' | 'STAFF' | null,
   /** 指定录入的员工（仅管理员） */
   creatorId: null as string | null,
   page: 1,

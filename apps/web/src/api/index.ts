@@ -4,6 +4,7 @@ import type {
   DashboardLists,
   DashboardRange,
   DashboardSummary,
+  DealSource,
   DealCreateInput,
   DealListItem,
   DealListQuery,
@@ -52,10 +53,11 @@ export const authApi = {
 };
 
 export const dashboardApi = {
-  summary: (range: DashboardRange) => http.get<DashboardSummary>('/dashboard/summary', { range }),
-  trend: () => http.get<TrendPoint[]>('/dashboard/trend'),
-  distribution: (range: DashboardRange) => http.get<DashboardDistribution>('/dashboard/distribution', { range }),
-  lists: () => http.get<DashboardLists>('/dashboard/lists'),
+  summary: (range: DashboardRange, source?: DealSource) => http.get<DashboardSummary>('/dashboard/summary', { range, source }),
+  trend: (source?: DealSource) => http.get<TrendPoint[]>('/dashboard/trend', { source }),
+  distribution: (range: DashboardRange, source?: DealSource) =>
+    http.get<DashboardDistribution>('/dashboard/distribution', { range, source }),
+  lists: (source?: DealSource) => http.get<DashboardLists>('/dashboard/lists', { source }),
   map: (q: MapSearchQuery) => http.get<MapSearchResult>('/dashboard/map', { ...q }),
   my: () => http.get<MyOrgDashboard>('/dashboard/my'),
   me: (range: DashboardRange) => http.get<StaffDashboard>('/dashboard/me', { range }),
@@ -144,7 +146,7 @@ export const shareApi = {
 
 export const dealApi = {
   summary: (q: DealListQuery) => http.get<DealSummary>('/deals/summary', { ...q }),
-  overview: () => http.get<DealOverview>('/deals/overview'),
+  overview: (source?: DealSource) => http.get<DealOverview>('/deals/overview', { source }),
   list: (q: DealListQuery) => http.get<PageResult<DealListItem>>('/deals', { ...q }),
   orgOptions: () => http.get<OrgOption[]>('/deals/org-options'),
   exportData: (q: DealListQuery) => http.get<Record<string, unknown>[]>('/deals/export', { ...q }),

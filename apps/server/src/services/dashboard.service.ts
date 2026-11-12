@@ -6,6 +6,7 @@ import {
   type DashboardLists,
   type DashboardRange,
   type DashboardSummary,
+  type DealSource,
   type DealBrief,
   type MapAreaStat,
   type MapCityStat,
@@ -22,6 +23,7 @@ import {
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { Errors } from '../lib/http';
+import { sourceSql, sourceWhere } from '../lib/dealSource';
 import { deltaPercent, lastMonths, monthStart, resolveRange } from '../lib/date';
 
 const APPROVED = [...APPROVED_DEAL_STATUSES];
@@ -37,18 +39,19 @@ function metric(value: number, previous: number): MetricWithDelta {
 
 /* ---------------- 指标卡 ---------------- */
 
-export async function getSummary(range: DashboardRange): Promise<DashboardSummary> {
+export async function getSummary(range: DashboardRange, source?: DealSource): Promise<DashboardSummary> {
   const r = resolveRange(range);
+  const src = sourceWhere(source);
 
   const dealAgg = (from: Date, to: Date) =>
     prisma.deal.aggregate({
-      where: { status: { in: APPROVED }, dealAt: { gte: from, lt: to } },
+      where: { ...src, status: { in: APPROVED }, dealAt: { gte: from, lt: to } },
       _count: { _all: true },
       _sum: { amount: true },
     });
   const incomeAgg = (from: Date, to: Date) =>
     prisma.deal.aggregate({
-      where: { status: 'SETTLED', settledAt: { gte: from, lt: to } },
+      where: { ...src, status: 'SETTLED', settledAt: { gte: from, lt: to } },
       _sum: { commission: true },
     });
   const orgNew = (from: Date, to: Date) =>
@@ -64,7 +67,7 @@ export async function getSummary(range: DashboardRange): Promise<DashboardSummar
       incomeAgg(r.start, r.end),
       incomeAgg(r.prevStart, r.prevEnd),
       prisma.deal.aggregate({
-        where: { status: 'PENDING_PAYMENT' },
+        where: { ...src, status: 'PENDING_PAYMENT' },
         _count: { _all: true },
         _sum: { commission: true },
       }),
@@ -83,7 +86,8 @@ export async function getSummary(range: DashboardRange): Promise<DashboardSummar
 
 /* ---------------- 近 12 个月趋势 ---------------- */
 
-export async function getTrend(): Promise<TrendPoint[]> {
+export async function getTrend(source?: DealSource): Promise<TrendPoint[]> {
+  const src = sourceSql(source);
   const months = lastMonths(12);
   const from = monthStart(-11);
 
@@ -94,13 +98,13 @@ export async function getTrend(): Promise<TrendPoint[]> {
              COALESCE(SUM(amount), 0)::float8 AS amount,
              COALESCE(SUM(commission), 0)::float8 AS commission
       FROM "Deal"
-      WHERE status IN ${APPROVED_SQL} AND "dealAt" >= ${from}
+      WHERE status IN ${APPROVED_SQL} AND "dealAt" >= ${from} ${src}
       GROUP BY 1`,
     prisma.$queryRaw<{ month: string; settled: number }[]>`
       SELECT to_char(date_trunc('month', ${localTs('settledAt')}), 'YYYY-MM') AS month,
              COALESCE(SUM(commission), 0)::float8 AS settled
       FROM "Deal"
-      WHERE status = 'SETTLED' AND "settledAt" >= ${from}
+      WHERE status = 'SETTLED' AND "settledAt" >= ${from} ${src}
       GROUP BY 1`,
     prisma.$queryRaw<{ month: string; new_orgs: number }[]>`
       SELECT to_char(date_trunc('month', ${localTs('createdAt')}), 'YYYY-MM') AS month,
@@ -135,7 +139,7 @@ interface ProvinceRow {
   commission: number;
 }
 
-export async function getDistribution(range: DashboardRange): Promise<DashboardDistribution> {
+export async function getDistribution(range: DashboardRange, source?: DealSource): Promise<DashboardDistribution> {
   const r = resolveRange(range);
 
   const [provinceRows, cityRows, typeRows, topRows] = await Promise.all([
@@ -149,7 +153,7 @@ export async function getDistribution(range: DashboardRange): Promise<DashboardD
       FROM "Org" o
       LEFT JOIN (
         SELECT "orgId", COUNT(*) AS deal_count, SUM(amount) AS amount, SUM(commission) AS commission
-        FROM "Deal" WHERE status IN ${APPROVED_SQL}
+        FROM "Deal" WHERE status IN ${APPROVED_SQL} ${sourceSql(source)}
         GROUP BY "orgId"
       ) d ON d."orgId" = o.id
       WHERE o."deletedAt" IS NULL AND o.province IS NOT NULL
@@ -174,7 +178,7 @@ export async function getDistribution(range: DashboardRange): Promise<DashboardD
              COALESCE(SUM(d.commission), 0)::float8 AS commission
       FROM "Deal" d
       JOIN "Org" o ON o.id = d."orgId"
-      WHERE d.status IN ${APPROVED_SQL} AND d."dealAt" >= ${r.start} AND o."deletedAt" IS NULL
+      WHERE d.status IN ${APPROVED_SQL} AND d."dealAt" >= ${r.start} AND o."deletedAt" IS NULL ${sourceSql(source, 'd')}
       GROUP BY o.id, o.name
       ORDER BY commission DESC
       LIMIT 10`,
@@ -281,16 +285,17 @@ function toDealBrief(d: DealBriefRow): DealBrief {
   };
 }
 
-export async function getLists(): Promise<DashboardLists> {
+export async function getLists(source?: DealSource): Promise<DashboardLists> {
+  const src = sourceWhere(source);
   const [pending, recent, incomplete] = await Promise.all([
     prisma.deal.findMany({
-      where: { status: 'PENDING_PAYMENT' },
+      where: { ...src, status: 'PENDING_PAYMENT' },
       orderBy: { createdAt: 'desc' },
       take: 6,
       select: dealBriefSelect,
     }),
     prisma.deal.findMany({
-      where: { status: { in: APPROVED } },
+      where: { ...src, status: { in: APPROVED } },
       orderBy: { dealAt: 'desc' },
       take: 6,
       select: dealBriefSelect,

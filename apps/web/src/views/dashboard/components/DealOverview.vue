@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { NSkeleton } from 'naive-ui';
 import { ArrowDownRight, ArrowUpRight, CalendarDays, Percent } from 'lucide-vue-next';
-import type { DealOverview, DealPeriodStat } from '@bdcrm/shared';
+import type { DealOverview, DealPeriodStat, DealSource } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import EChart from '@/components/EChart.vue';
 import type { EChartsOption } from '@/plugins/echarts';
@@ -14,16 +14,18 @@ import { money, moneyShort, num } from '@/utils/format';
  * 成交概览（仅管理员）：今日 / 本周 / 本月成交与上期同期对比、成交率、近 30 天走势。
  * 点击时间段卡片跳转到「成交与结算」，并筛选到对应日期范围。
  */
+const props = defineProps<{ source?: DealSource }>();
 const router = useRouter();
 function pick(range: [string, string]) {
-  router.push({ name: 'deals', query: { start: range[0], end: range[1] } });
+  router.push({ name: 'deals', query: { start: range[0], end: range[1], creator: props.source } });
 }
 
 const data = ref<DealOverview | null>(null);
 const loading = ref(true);
 async function load() {
+  loading.value = true;
   try {
-    data.value = await dealApi.overview();
+    data.value = await dealApi.overview(props.source);
   } catch {
     /* 概览加载失败不影响列表 */
   } finally {
@@ -31,6 +33,7 @@ async function load() {
   }
 }
 onMounted(load);
+watch(() => props.source, load);
 defineExpose({ reload: load });
 
 /** 环比（%）；上期为 0 时不显示 */

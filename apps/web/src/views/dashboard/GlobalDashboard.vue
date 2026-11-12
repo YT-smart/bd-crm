@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, shallowRef, watch } from 'vue';
 import { useMessage } from 'naive-ui';
-import { PERM, type DashboardDistribution, DashboardLists, DashboardRange, DashboardSummary, TrendPoint } from '@bdcrm/shared';
+import { PERM, type DashboardDistribution, DashboardLists, DashboardRange, DashboardSummary, DealSource, TrendPoint } from '@bdcrm/shared';
 import { dashboardApi } from '@/api';
 import { useAuthStore } from '@/stores/auth';
 import { ApiError } from '@/api/http';
@@ -20,6 +20,15 @@ const message = useMessage();
 /** 成交笔数 / 成交额 / 佣金等经营数据只给管理员看，员工看到的是机构维度的概览 */
 const finance = useAuthStore().can(PERM.DASHBOARD_FINANCE);
 
+/** 管理员看的成交数据来源：员工录入（默认）/ 机构录入，两边分开统计避免重复 */
+const SOURCES: { value: DealSource; label: string }[] = [
+  { value: 'STAFF', label: '员工数据' },
+  { value: 'ORG', label: '机构数据' },
+];
+const source = ref<DealSource>('STAFF');
+/** 员工账号不区分来源（看不到经营数据） */
+const src = () => (finance ? source.value : undefined);
+
 /** Top 10 卡片自己的时间范围；其余卡片（地图、业务类型、员工的新增机构）与它无关 */
 const topRange = ref<DashboardRange>('month');
 
@@ -31,15 +40,18 @@ const lists = shallowRef<DashboardLists | null>(null);
 const loadingStatic = ref(true); // 趋势、列表
 const loadingDist = ref(true); // 指标卡、分布
 
+/** 切换数据来源后指标卡需要重新取 */
+let reloadSummary = false;
 async function loadDist() {
   loadingDist.value = true;
   try {
     const [s, d] = await Promise.all([
-      summary.value ? Promise.resolve(summary.value) : dashboardApi.summary('month'),
-      dashboardApi.distribution(topRange.value),
+      summary.value && !reloadSummary ? Promise.resolve(summary.value) : dashboardApi.summary('month', src()),
+      dashboardApi.distribution(topRange.value, src()),
     ]);
     summary.value = s;
     dist.value = d;
+    reloadSummary = false;
   } catch (e) {
     message.error(e instanceof ApiError ? e.message : '加载失败');
   } finally {
@@ -50,7 +62,7 @@ async function loadDist() {
 async function loadStatic() {
   loadingStatic.value = true;
   try {
-    const [t, l] = await Promise.all([finance ? dashboardApi.trend() : Promise.resolve([]), dashboardApi.lists()]);
+    const [t, l] = await Promise.all([finance ? dashboardApi.trend(src()) : Promise.resolve([]), dashboardApi.lists(src())]);
     trend.value = t;
     lists.value = l;
   } catch (e) {
@@ -65,6 +77,11 @@ onMounted(() => {
   loadDist();
 });
 watch(topRange, loadDist);
+watch(source, () => {
+  reloadSummary = true;
+  loadStatic();
+  loadDist();
+});
 
 </script>
 
@@ -72,7 +89,22 @@ watch(topRange, loadDist);
   <div class="page dash">
     <!-- 管理员：经营数据在最上面，机构分布类放到下面 -->
     <template v-if="finance">
-      <DealOverview class="ov-top" />
+      <div class="src-bar">
+        <div class="segmented" role="tablist" aria-label="数据来源">
+          <button
+            v-for="s in SOURCES"
+            :key="s.value"
+            role="tab"
+            :aria-selected="source === s.value"
+            :class="{ active: source === s.value }"
+            @click="source = s.value"
+          >
+            {{ s.label }}
+          </button>
+        </div>
+        <span class="src-hint">{{ source === 'STAFF' ? '统计员工和管理员录入的成交' : '统计机构账号自己录入的成交' }}</span>
+      </div>
+      <DealOverview class="ov-top" :source="source" />
 
       <section class="grid-12">
         <TrendChart class="span-8 rise-in" style="animation-delay: 40ms" :data="trend" :loading="loadingStatic" />
@@ -133,6 +165,17 @@ watch(topRange, loadDist);
 <style scoped>
 .ov-top {
   margin-bottom: 16px;
+}
+.src-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.src-hint {
+  font-size: 12.5px;
+  color: var(--text-3);
 }
 .sec-title {
   font-size: 18px;

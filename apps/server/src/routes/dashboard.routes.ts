@@ -14,11 +14,14 @@ const ZERO_METRIC = { value: 0, previous: 0, delta: null };
 const rangeSchema = z.object({
   range: z.enum(['month', 'quarter', 'year']).default('month'),
 });
+/** 管理员仪表盘切换「员工录入 / 机构录入」的成交；不传为全部 */
+const sourceSchema = z.object({ source: z.enum(['STAFF', 'ORG']).optional() });
 
 /* 管理员 / 员工：全局数据 */
 router.get('/summary', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
   const { range } = rangeSchema.parse(req.query);
-  const data = await dashboard.getSummary(range);
+  const { source } = sourceSchema.parse(req.query);
+  const data = await dashboard.getSummary(range, source);
   if (!canSeeFinance(req.user!.permissions)) {
     Object.assign(data, {
       dealCount: ZERO_METRIC,
@@ -30,13 +33,14 @@ router.get('/summary', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
   ok(res, data);
 });
 
-router.get('/trend', requirePerm(PERM.DASHBOARD_FINANCE), async (_req, res) => {
-  ok(res, await dashboard.getTrend());
+router.get('/trend', requirePerm(PERM.DASHBOARD_FINANCE), async (req, res) => {
+  ok(res, await dashboard.getTrend(sourceSchema.parse(req.query).source));
 });
 
 router.get('/distribution', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
   const { range } = rangeSchema.parse(req.query);
-  const data = await dashboard.getDistribution(range);
+  const { source } = sourceSchema.parse(req.query);
+  const data = await dashboard.getDistribution(range, source);
   if (!canSeeFinance(req.user!.permissions)) {
     data.provinces = data.provinces.map((p) => ({ ...p, dealCount: 0, amount: 0, commission: 0 }));
     data.topOrgs = [];
@@ -55,7 +59,7 @@ router.get('/map', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
 });
 
 router.get('/lists', requirePerm(PERM.DASHBOARD_GLOBAL), async (req, res) => {
-  const data = await dashboard.getLists();
+  const data = await dashboard.getLists(sourceSchema.parse(req.query).source);
   if (!canSeeFinance(req.user!.permissions)) {
     data.pendingDeals = [];
     data.recentDeals = [];

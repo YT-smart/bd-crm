@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { NDrawer, NDrawerContent } from 'naive-ui';
-import type { OrgDetail } from '@bdcrm/shared';
+import type { DealSource, OrgDetail } from '@bdcrm/shared';
 import OrgBasicInfo from './tabs/OrgBasicInfo.vue';
 import OrgInfoTab from './tabs/OrgInfoTab.vue';
 import OrgContactsTab from './tabs/OrgContactsTab.vue';
@@ -31,6 +31,8 @@ const canSeeStats = computed(() => !props.internal || canSeeCooperation);
 /** 在机构详情里录入成交：管理员、员工 */
 const canCreateDeal = computed(() => props.internal && auth.can(PERM.DEAL_CREATE));
 const canReview = auth.can(PERM.ORG_REVIEW);
+/** 管理员筛选成交录入方（成交记录和合作数据联动）；null 为全部 */
+const dealSource = ref<DealSource | null>(null);
 
 const showEdit = ref(false);
 function openEdit() {
@@ -65,7 +67,7 @@ defineExpose({ openEdit });
         :can-edit="canEdit"
         @refresh="emit('refresh')"
       />
-      <OrgDealsTab :org-id="org.id" :can-create="canCreateDeal" />
+      <OrgDealsTab v-model:source="dealSource" :org-id="org.id" :can-create="canCreateDeal" />
       <OrgAttachmentsTab :org-id="org.id" :can-edit="canEdit" />
     </div>
 
@@ -80,7 +82,7 @@ defineExpose({ openEdit });
         :has-wechat-qr="org.hasWechatQr"
         @refresh="emit('refresh')"
       />
-      <OrgStatsCard v-if="canSeeStats" :stats="org.stats" />
+      <OrgStatsCard v-if="canSeeStats" :stats="org.stats" :org-id="org.id" :source="dealSource" />
       <OrgReviewsCard v-if="internal && canReview" :org-id="org.id" />
       <OrgCooperationTab v-if="internal" :org="org" :can-edit="canEdit && canSeeCooperation" @updated="emit('refresh')" />
     </div>

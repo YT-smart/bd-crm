@@ -3,6 +3,7 @@ import {
   APPROVED_DEAL_STATUSES,
   DealStatus,
   type DealOverview,
+  type DealSource,
   type DealPeriodStat,
   type DealListItem,
   type DealListQuery,
@@ -13,6 +14,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/http';
 import { dayRange } from '../lib/date';
+import { sourceWhere } from '../lib/dealSource';
 
 const num = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
 const APPROVED: readonly DealStatus[] = APPROVED_DEAL_STATUSES;
@@ -175,7 +177,8 @@ function finish(s: DealPeriodStat): DealPeriodStat {
  * 今日 / 本周 / 本月成交，对比上期同一时刻（如本周一至今 vs 上周一至上周同一时刻）。
  * 按成交日期统计；进程时区为北京时间，Date 本地方法即北京时间。
  */
-export async function getDealOverview(now = new Date()): Promise<DealOverview> {
+export async function getDealOverview(source?: DealSource, now = new Date()): Promise<DealOverview> {
+  const src = sourceWhere(source);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const elapsedToday = now.getTime() - today.getTime();
   const weekStart = new Date(today.getTime() - ((today.getDay() + 6) % 7) * DAY_MS); // 周一
@@ -187,10 +190,10 @@ export async function getDealOverview(now = new Date()): Promise<DealOverview> {
 
   const [rows, allGroups] = await Promise.all([
     prisma.deal.findMany({
-      where: { dealAt: { gte: from, lte: now }, status: { in: [...APPROVED] } },
+      where: { ...src, dealAt: { gte: from, lte: now }, status: { in: [...APPROVED] } },
       select: { dealAt: true, status: true, amount: true, commission: true },
     }),
-    prisma.deal.groupBy({ by: ['status'], where: { status: { in: [...APPROVED] } }, _count: { _all: true }, _sum: { amount: true, commission: true } }),
+    prisma.deal.groupBy({ by: ['status'], where: { ...src, status: { in: [...APPROVED] } }, _count: { _all: true }, _sum: { amount: true, commission: true } }),
   ]);
 
   const inRange = (t: number, start: Date, end: number) => t >= start.getTime() && t < end;

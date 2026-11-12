@@ -42,6 +42,8 @@ export interface LoginLogItem {
 /* ---------------- 仪表盘 ---------------- */
 
 export type DashboardRange = 'month' | 'quarter' | 'year';
+/** 成交录入方：员工（含管理员）录入 / 机构录入 */
+export type DealSource = 'STAFF' | 'ORG';
 
 export interface MetricWithDelta {
   value: number;
