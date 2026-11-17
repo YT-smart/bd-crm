@@ -112,7 +112,9 @@ export const ATTACHMENT_MAX_MB = 20;
  * 常用业务类型（下拉里的快捷选项）。机构 / 产品还可以自定义输入其他类型，
  * 所以库里存的是任意字符串，这里只是推荐项。
  */
-export const BUSINESS_TYPES = ['留学', '语培', '竞赛', '科研', '求职', '公益', '作品集'] as const;
+export const BUSINESS_TYPES = [
+  '美本', '港英本', '美硕', '港英硕', '竞赛', '科研', '艺术作品', '单文书', '雅思', '托福', 'A-Level', 'SAT', 'ACCP',
+] as const;
 /** 自定义业务类型的长度上限 */
 export const BUSINESS_TYPE_MAX_LEN = 20;
 

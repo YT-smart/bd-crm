@@ -204,7 +204,7 @@ const updateSchema = z.object({
   wechat: z.string().max(100).nullish(),
   foundedAt: z.string().datetime().nullish().or(z.literal('')),
   scale: z.string().max(50).nullish(),
-  businessTypes: z.array(businessTypeSchema).max(12).optional(),
+  businessTypes: z.array(businessTypeSchema).max(20).optional(),
   countries: z.array(z.enum(COUNTRIES)).optional(),
   officeCities: z.array(citySchema).max(30).optional(),
   tags: z.array(z.string().max(30)).max(10).optional(),

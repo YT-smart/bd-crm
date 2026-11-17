@@ -11,7 +11,7 @@ import {
   ShieldCheck, Trash2, UserCheck, UserX,
 } from 'lucide-vue-next';
 import { Role, ROLE_LABEL } from '@bdcrm/shared';
-import { userApi, orgApi, type UserItem, type UserQuery } from '@/api';
+import { userApi, type UserItem, type UserQuery } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { date } from '@/utils/format';
@@ -72,13 +72,11 @@ const orgOptions = ref<Array<{ label: string; value: string }>>([]);
 onMounted(async () => {
   load();
   try {
-    const staff = await orgApi.staffOptions();
-    // 加载机构选项用于创建机构账号时绑定
-  } catch {}
-  try {
-    const res = await orgApi.list({ page: 1, pageSize: 200 });
-    orgOptions.value = res.list.map((o) => ({ label: o.name, value: o.id }));
-  } catch {}
+    const orgs = await userApi.orgOptions();
+    orgOptions.value = orgs.map((o) => ({ label: o.name, value: o.id }));
+  } catch {
+    message.error('机构列表加载失败，请刷新重试');
+  }
 });
 
 /* ---------- 创建/编辑弹窗 ---------- */

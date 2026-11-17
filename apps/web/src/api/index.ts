@@ -240,6 +240,7 @@ export interface UserQuery {
 
 export const userApi = {
   list: (q: UserQuery) => http.get<PageResult<UserItem>>('/users', { ...q }),
+  orgOptions: () => http.get<Array<{ id: string; name: string }>>('/users/org-options'),
   create: (data: { username: string; name: string; role: string; orgId?: string | null; phone?: string | null; email?: string | null; password: string }) =>
     http.post<{ id: string }>('/users', data),
   update: (id: string, data: { name?: string; role?: string; orgId?: string | null; phone?: string | null; email?: string | null }) =>

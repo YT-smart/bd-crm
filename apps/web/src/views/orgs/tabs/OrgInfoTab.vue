@@ -257,8 +257,8 @@ async function save() {
             v-model:value="form.businessTypes"
             :options="businessTypeOptions"
             multiple
-            :max-tag-count="12"
-            placeholder="选择业务类型（留学、语培、竞赛…），没有的选「其他」自己填写"
+            :max-tag-count="20"
+            placeholder="选择业务类型（美本、港英硕、雅思…），没有的选「其他」自己填写"
           />
         </NFormItem>
         <NFormItem v-if="form.businessTypes.includes(OTHER)" label="其他业务类型" class="full">

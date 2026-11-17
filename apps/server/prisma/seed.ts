@@ -97,17 +97,20 @@ const SURNAMES = '王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗高�
 const GIVEN = ['子涵', '欣怡', '梓萱', '浩然', '宇轩', '一诺', '思远', '雨桐', '佳怡', '俊杰', '梓睿', '若曦', '晨阳', '诗涵', '嘉懿', '明哲', '沐宸', '可馨', '奕辰', '语嫣', '书瑶', '天佑', '芷若', '博文', '安琪', '景行', '静怡', '思源', '泽宇', '心悦'];
 const TITLES = ['校长', '总经理', '市场总监', '合作经理', '运营主管', '顾问主管'];
 const PRODUCT_TEMPLATES: readonly { name: string; type: string; min: number; max: number }[] = [
-  { name: '美国本科申请全程服务', type: '留学', min: 60000, max: 180000 },
-  { name: '英国硕士申请', type: '留学', min: 30000, max: 80000 },
-  { name: '澳洲本硕连读规划', type: '留学', min: 35000, max: 90000 },
-  { name: '加拿大高中直通车', type: '低龄留学', min: 50000, max: 150000 },
-  { name: '新加坡公立大学申请', type: '留学', min: 25000, max: 60000 },
-  { name: '香港硕士申请', type: '留学', min: 20000, max: 50000 },
-  { name: '雅思 7 分保分班', type: '语培', min: 12000, max: 36000 },
-  { name: '托福 100+ 冲刺', type: '语培', min: 15000, max: 40000 },
+  { name: '美国本科申请全程服务', type: '美本', min: 60000, max: 180000 },
+  { name: '英国硕士申请', type: '港英硕', min: 30000, max: 80000 },
+  { name: '美国硕士申请', type: '美硕', min: 35000, max: 90000 },
+  { name: '香港本科申请', type: '港英本', min: 50000, max: 150000 },
+  { name: '国际竞赛辅导', type: '竞赛', min: 25000, max: 60000 },
+  { name: '香港硕士申请', type: '港英硕', min: 20000, max: 50000 },
+  { name: '雅思 7 分保分班', type: '雅思', min: 12000, max: 36000 },
+  { name: '托福 100+ 冲刺', type: '托福', min: 15000, max: 40000 },
   { name: '科研背景提升项目', type: '科研', min: 20000, max: 68000 },
-  { name: '名校夏校游学营', type: '游学营地', min: 30000, max: 80000 },
-  { name: 'A-Level 全科课程', type: '低龄留学', min: 80000, max: 260000 },
+  { name: '艺术作品集指导', type: '艺术作品', min: 30000, max: 80000 },
+  { name: 'A-Level 全科课程', type: 'A-Level', min: 80000, max: 260000 },
+  { name: '文书单项服务', type: '单文书', min: 5000, max: 20000 },
+  { name: 'SAT 1500+ 冲刺', type: 'SAT', min: 15000, max: 45000 },
+  { name: 'ACCP 课程', type: 'ACCP', min: 20000, max: 60000 },
 ];
 
 const phone = () => `1${pick(['3', '5', '7', '8', '9'])}${String(int(0, 999999999)).padStart(9, '0')}`;

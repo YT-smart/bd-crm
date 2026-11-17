@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Role, PERM } from '@bdcrm/shared';
 import { ok, Errors } from '../lib/http';
 import { requirePerm } from '../middlewares/auth';
+import { prisma } from '../lib/prisma';
 import { PASSWORD_RULE } from '../lib/security';
 import { writeAudit } from '../services/audit.service';
 import {
@@ -24,6 +25,17 @@ const querySchema = z.object({
   keyword: z.string().trim().max(50).optional(),
   role: z.nativeEnum(Role).optional(),
   isActive: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+});
+
+/* ============ 机构选项（机构账号绑定下拉，含全部未删除机构） ============ */
+
+router.get('/org-options', requirePerm(PERM.USER_MANAGE), async (_req, res) => {
+  const orgs = await prisma.org.findMany({
+    where: { deletedAt: null },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  ok(res, orgs);
 });
 
 router.get('/', requirePerm(PERM.USER_MANAGE), async (req, res) => {
