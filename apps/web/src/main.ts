@@ -7,6 +7,7 @@ import { router } from './router';
 import { KICKED_OUT_CODE } from '@bdcrm/shared';
 import { onUnauthorized } from './api/http';
 import { useAuthStore } from './stores/auth';
+import { setupVersionCheck } from './utils/versionCheck';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -24,5 +25,7 @@ onUnauthorized((err) => {
     router.replace({ name: 'login', query: { redirect: current.fullPath } });
   }
 });
+
+setupVersionCheck(router);
 
 app.mount('#app');
