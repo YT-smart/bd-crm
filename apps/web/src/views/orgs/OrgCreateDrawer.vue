@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyText } from '@/utils/clipboard';
 import { ref, reactive, computed, watch } from 'vue';
 import {
   NDrawer, NDrawerContent, NForm, NFormItem, NModal,
@@ -77,12 +78,11 @@ async function copyCredentials() {
   if (!result.value?.account) return;
   const a = result.value.account;
   const text = `机构：${result.value.name}\n登录地址：${location.origin}/login\n账号：${a.username}\n初始密码：${a.password}\n（首次登录后需修改密码）`;
-  try {
-    await navigator.clipboard.writeText(text);
+  if (await copyText(text)) {
     copied.value = true;
     message.success('已复制到剪贴板');
     setTimeout(() => (copied.value = false), 2000);
-  } catch {
+  } else {
     message.error('复制失败，请手动记录');
   }
 }
