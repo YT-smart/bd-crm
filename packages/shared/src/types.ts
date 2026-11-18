@@ -461,6 +461,7 @@ export interface DealListItem {
   id: string;
   orgId: string;
   orgName: string;
+  productId: string | null;
   productName: string | null;
   studentName: string;
   studentPhone: string | null;
@@ -470,6 +471,7 @@ export interface DealListItem {
   commission: number;
   status: DealStatus;
   rejectReason: string | null;
+  createdById: string;
   createdByName: string;
   /** 录入人角色：ORG 为机构录入，其余为员工录入 */
   createdByRole: Role;
@@ -511,6 +513,8 @@ export interface DealCreateInput {
 }
 
 export interface DealUpdateInput {
+  /** 更换机构：仅管理员 */
+  orgId?: string;
   productId?: string | null;
   studentName?: string;
   studentPhone?: string | null;

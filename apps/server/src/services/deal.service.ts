@@ -15,6 +15,8 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/http';
 import { dayRange } from '../lib/date';
 import { sourceWhere } from '../lib/dealSource';
+import { removeStoredFile } from '../lib/storage';
+import { removeThumbnail } from '../lib/thumbnail';
 
 const num = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
 const APPROVED: readonly DealStatus[] = APPROVED_DEAL_STATUSES;
@@ -96,6 +98,7 @@ export async function listDeals(
       id: d.id,
       orgId: d.orgId,
       orgName: d.org.name,
+      productId: d.productId,
       productName: d.product?.name ?? null,
       studentName: d.studentName,
       studentPhone: d.studentPhone,
@@ -105,6 +108,7 @@ export async function listDeals(
       commission: num(d.commission),
       status: d.status,
       rejectReason: d.rejectReason,
+      createdById: d.createdById,
       createdByName: d.createdBy.name,
       createdByRole: d.createdBy.role,
       auditedByName: d.auditedBy?.name ?? null,
@@ -309,6 +313,7 @@ export async function createDeal(input: CreateDealInput) {
 export async function updateDeal(
   dealId: string,
   input: {
+    orgId?: string;
     productId?: string | null;
     studentName?: string;
     studentPhone?: string | null;
@@ -329,15 +334,26 @@ export async function updateDeal(
     throw new AppError(400, '只能修改还没到账的成交记录');
   }
 
+  // 更换机构：只有管理员（不强制约定比例的）可以；换机构后原产品不再适用
+  let orgId = deal.orgId;
+  const data: Prisma.DealUncheckedUpdateInput = {};
+  if (input.orgId && input.orgId !== deal.orgId) {
+    if (scope.enforceAgreedRate || scope.orgId) throw new AppError(403, '无权更换机构');
+    const org = await prisma.org.findFirst({ where: { id: input.orgId, deletedAt: null } });
+    if (!org) throw new AppError(404, '机构不存在');
+    orgId = org.id;
+    data.orgId = orgId;
+    if (input.productId === undefined) data.productId = null;
+  }
+
   // 产品必须属于该成交所在机构
   let productRate: number | null | undefined;
   if (input.productId) {
-    const product = await prisma.orgProduct.findFirst({ where: { id: input.productId, orgId: deal.orgId } });
+    const product = await prisma.orgProduct.findFirst({ where: { id: input.productId, orgId } });
     if (!product) throw new AppError(404, '产品不存在');
     productRate = product.rate != null ? num(product.rate) : null;
   }
 
-  const data: Prisma.DealUncheckedUpdateInput = {};
   if (input.productId !== undefined) data.productId = input.productId;
   if (input.studentName) data.studentName = input.studentName;
   if (input.studentPhone !== undefined) data.studentPhone = input.studentPhone;
@@ -352,7 +368,7 @@ export async function updateDeal(
       const p = await prisma.orgProduct.findUnique({ where: { id: productId } });
       productRate = p?.rate != null ? num(p.rate) : null;
     }
-    const org = await prisma.org.findUnique({ where: { id: deal.orgId }, select: { defaultRate: true } });
+    const org = await prisma.org.findUnique({ where: { id: orgId }, select: { defaultRate: true } });
     const rate = (productId ? productRate : null) ?? num(org?.defaultRate);
     const amount = input.amount ?? num(deal.amount);
     data.rate = rate;
@@ -363,6 +379,30 @@ export async function updateDeal(
   }
 
   return prisma.deal.update({ where: { id: dealId }, data });
+}
+
+/* ============ 删除成交（到账之前可删） ============ */
+
+export async function deleteDeal(dealId: string, scope: { orgId?: string; userId?: string } = {}) {
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: { org: { select: { name: true } }, attachments: { select: { id: true, url: true } } },
+  });
+  if (!deal) throw new AppError(404, '成交记录不存在');
+  if (scope.orgId && deal.orgId !== scope.orgId) throw new AppError(403, '无权删除');
+  if (scope.userId && deal.createdById !== scope.userId) throw new AppError(403, '只能删除自己录入的成交');
+  if (deal.status === DealStatus.SETTLED) throw new AppError(400, '已到账的成交不能删除，请先撤销到账');
+
+  await prisma.$transaction([
+    // 由线索签约生成的成交：删掉后线索回到「重点跟进」，可以重新登记签约
+    prisma.lead.updateMany({ where: { dealId }, data: { dealId: null, pushStatus: '重点跟进' } }),
+    prisma.deal.delete({ where: { id: dealId } }),
+  ]);
+  for (const a of deal.attachments) {
+    await removeStoredFile(a.url).catch(() => {});
+    await removeThumbnail(a.id).catch(() => {});
+  }
+  return deal;
 }
 
 /* ============ 结算 ============ */

@@ -28,6 +28,12 @@ const auth = useAuthStore();
 
 /* ---------- 权限 ---------- */
 const canCreate = computed(() => auth.can('deal:create'));
+/** 编辑 / 删除（只限待到账的）：管理员全部；员工自己录入的；机构本机构的（列表本来就只有本机构） */
+function canModify(r: DealListItem) {
+  if (r.status !== DealStatus.PENDING_PAYMENT || !canCreate.value) return false;
+  if (auth.user?.role === 'STAFF') return r.createdById === auth.user.id;
+  return true;
+}
 /** 确认到账（= 结算）：管理员 */
 const canSettle = computed(() => auth.can('deal:settle'));
 
@@ -322,6 +328,32 @@ async function handleExport() {
   }
 }
 
+/* ---------- 编辑 / 删除 ---------- */
+const editingDeal = ref<DealListItem | null>(null);
+const showEdit = ref(false);
+function openEdit(r: DealListItem) {
+  editingDeal.value = r;
+  showEdit.value = true;
+}
+function handleDelete(r: DealListItem) {
+  dialog.warning({
+    title: '删除成交',
+    content: `确定删除「${r.studentName}」在「${r.orgName}」的这笔成交（${money(r.amount)}）吗？删除后不能恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await dealApi.remove(r.id);
+        message.success('已删除');
+        reload();
+      } catch (e) {
+        message.error(e instanceof ApiError ? e.message : '删除失败');
+        return false;
+      }
+    },
+  });
+}
+
 /* ---------- 表格列 ---------- */
 const columns = computed<DataTableColumns<DealListItem>>(() => {
   const cols: DataTableColumns<DealListItem> = [];
@@ -366,6 +398,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
       sortOrder: sort.value?.key === 'commission' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
       render: (r) => h('span', { class: 'num', style: 'font-weight: 600' }, money(r.commission)),
     },
+    { title: '备注', key: 'note', width: 160, ellipsis: { tooltip: true }, render: (r) => r.note || '--' },
     { title: '状态', key: 'status', width: 100, render: (r) => h(StatusTag, { kind: 'deal', status: r.status }) },
     {
       title: '录入人', key: 'createdByName', width: 120,
@@ -386,10 +419,14 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
   cols.push({
     title: '操作',
     key: 'actions',
-    width: 120,
+    width: canSettle.value ? 190 : 110,
     fixed: 'right',
     render: (r) => {
       const btns: any[] = [];
+      if (canModify(r)) {
+        btns.push(h('button', { class: 'link-btn sm', onClick: (e: Event) => { e.stopPropagation(); openEdit(r); } }, '编辑'));
+        btns.push(h('button', { class: 'link-btn sm text-danger', onClick: (e: Event) => { e.stopPropagation(); handleDelete(r); } }, '删除'));
+      }
       if (r.status === DealStatus.PENDING_PAYMENT && canSettle.value) {
         btns.push(h('button', { class: 'link-btn sm', onClick: (e: Event) => { e.stopPropagation(); openSettle([r.id]); } }, '确认到账'));
       }
@@ -397,7 +434,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
         btns.push(h('button', { class: 'link-btn sm text-warning', onClick: (e: Event) => { e.stopPropagation(); handleRevoke(r); } }, '撤销到账'));
       }
       if (!btns.length) return h('span', { class: 'text-3' }, '--');
-      return h('div', { style: 'display: flex; gap: 6px; align-items: center' }, btns);
+      return h('div', { style: 'display: flex; gap: 10px; align-items: center; white-space: nowrap' }, btns);
     },
   });
 
@@ -532,6 +569,7 @@ onMounted(async () => {
 
     <!-- 录入成交 Modal -->
     <DealCreateModal v-model:show="showCreate" @created="reload" />
+    <DealCreateModal v-model:show="showEdit" :deal="editingDeal" @saved="reload" />
 
     <!-- 结算弹窗 -->
     <NModal v-model:show="showSettle" preset="card" title="确认到账" style="max-width: 460px">

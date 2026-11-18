@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { NDatePicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useMessage } from 'naive-ui';
-import type { OrgOption } from '@bdcrm/shared';
+import type { DealListItem, OrgOption } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -10,10 +10,12 @@ import { useAuthStore } from '@/stores/auth';
  * 录入成交（直接生成待到账的成交记录，管理员确认到账即结算）。
  * 管理员可以改佣金比例和金额；员工、机构按合作约定比例自动计算（后端同样强制）。
  * orgId：固定机构（机构详情页、机构账号），不传则可选择。
+ * deal：传入时为编辑模式（只能改待到账的）；管理员编辑时可以更换机构。
  */
-const props = defineProps<{ orgId?: string | null }>();
+const props = defineProps<{ orgId?: string | null; deal?: DealListItem | null }>();
 const show = defineModel<boolean>('show', { required: true });
-const emit = defineEmits<{ created: [] }>();
+const emit = defineEmits<{ created: []; saved: [] }>();
+const editing = computed(() => !!props.deal);
 const message = useMessage();
 const auth = useAuthStore();
 
@@ -39,7 +41,10 @@ const form = reactive({
   amount: 0,
   rate: 15,
   commission: 0,
+  note: '',
 });
+/** 打开编辑时回填数据，回填期间不让 watch 改掉原有比例 / 佣金 / 产品 */
+let filling = false;
 
 const selectedOrg = computed(() => orgOptions.value.find((o) => o.id === form.orgId));
 const productOptions = computed(
@@ -55,15 +60,18 @@ function agreedRate() {
 }
 
 watch(() => form.orgId, () => {
+  if (filling) return;
   form.productId = null;
   form.rate = agreedRate();
 });
 watch(() => form.productId, () => {
+  if (filling) return;
   form.rate = agreedRate();
 });
 watch(
   () => [form.amount, form.rate],
   () => {
+    if (filling) return;
     form.commission = Math.round(form.amount * form.rate) / 100;
   },
 );
@@ -71,6 +79,24 @@ watch(
 watch(show, async (open) => {
   if (!open) return;
   await loadOrgOptions();
+  const d = props.deal;
+  if (d) {
+    filling = true;
+    Object.assign(form, {
+      orgId: d.orgId,
+      productId: d.productId,
+      studentName: d.studentName,
+      studentPhone: d.studentPhone ?? '',
+      dealAt: new Date(d.dealAt).getTime(),
+      amount: d.amount,
+      rate: d.rate,
+      commission: d.commission,
+      note: d.note ?? '',
+    });
+    await nextTick();
+    filling = false;
+    return;
+  }
   Object.assign(form, {
     orgId: props.orgId ?? (auth.user?.role === 'ORG' ? auth.user.orgId : null),
     productId: null,
@@ -78,6 +104,7 @@ watch(show, async (open) => {
     studentPhone: '',
     dealAt: Date.now(),
     amount: 0,
+    note: '',
   });
   // orgId 没变时 watch 不触发，这里主动取约定比例
   form.rate = agreedRate();
@@ -90,22 +117,33 @@ async function submit() {
   if (!form.dealAt) { message.warning('请选择成交日期'); return; }
   if (form.amount <= 0) { message.warning('成交金额须大于0'); return; }
   creating.value = true;
+  const base = {
+    productId: form.productId,
+    studentName: form.studentName.trim(),
+    dealAt: new Date(form.dealAt).toISOString(),
+    amount: form.amount,
+    rate: form.rate,
+    commission: form.commission,
+    note: form.note.trim() || null,
+  };
   try {
-    await dealApi.create({
-      orgId: form.orgId,
-      productId: form.productId,
-      studentName: form.studentName.trim(),
-      studentPhone: form.studentPhone.trim() || undefined,
-      dealAt: new Date(form.dealAt).toISOString(),
-      amount: form.amount,
-      rate: form.rate,
-      commission: form.commission,
-    });
-    message.success('成交已录入');
-    show.value = false;
-    emit('created');
+    if (props.deal) {
+      await dealApi.update(props.deal.id, {
+        ...base,
+        studentPhone: form.studentPhone.trim() || null,
+        ...(form.orgId !== props.deal.orgId ? { orgId: form.orgId } : {}),
+      });
+      message.success('已保存');
+      show.value = false;
+      emit('saved');
+    } else {
+      await dealApi.create({ ...base, orgId: form.orgId, studentPhone: form.studentPhone.trim() || undefined });
+      message.success('成交已录入');
+      show.value = false;
+      emit('created');
+    }
   } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '录入失败');
+    message.error(e instanceof ApiError ? e.message : editing.value ? '保存失败' : '录入失败');
   } finally {
     creating.value = false;
   }
@@ -113,15 +151,15 @@ async function submit() {
 </script>
 
 <template>
-  <NModal v-model:show="show" preset="card" title="录入成交" style="max-width: 560px">
-    <NForm label-placement="left" label-width="80" :show-feedback="false">
+  <NModal v-model:show="show" preset="card" :title="editing ? '编辑成交' : '录入成交'" style="max-width: 560px">
+    <NForm label-placement="left" label-width="88" :show-feedback="false">
       <NFormItem label="机构" required>
         <NSelect
           v-model:value="form.orgId"
           :options="orgSelectOptions"
           filterable
           placeholder="选择机构"
-          :disabled="!!orgId || auth.user?.role === 'ORG'"
+          :disabled="!!orgId || auth.user?.role === 'ORG' || (editing && auth.user?.role !== 'ADMIN')"
         />
       </NFormItem>
       <NFormItem v-if="productOptions.length" label="产品">
@@ -156,6 +194,9 @@ async function submit() {
           </NInputNumber>
           <span class="text-3 field-hint">{{ lockRate ? '系统自动计算' : '按比例自动计算，可手动修改' }}</span>
         </div>
+      </NFormItem>
+      <NFormItem label="备注">
+        <NInput v-model:value="form.note" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="年级、项目等（可选）" maxlength="500" />
       </NFormItem>
     </NForm>
     <template #action>

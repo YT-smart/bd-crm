@@ -155,6 +155,7 @@ export const dealApi = {
 
   create: (data: DealCreateInput) => http.post<{ id: string }>('/deals', data),
   update: (id: string, data: DealUpdateInput) => http.put<{ id: string }>(`/deals/${id}`, data),
+  remove: (id: string) => http.del<null>(`/deals/${id}`),
 
   settle: (data: DealSettleInput) => http.post<{ updated: number }>('/deals/settle', data),
   revokeSettle: (id: string, reason: string) =>

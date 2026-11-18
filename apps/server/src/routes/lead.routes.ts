@@ -153,7 +153,7 @@ router.put('/:id', requirePerm(PERM.LEAD_EDIT), async (req, res) => {
   ok(res, { id: after.id });
 });
 
-/* ============ 分配跟进人 / 删除（仅管理员） ============ */
+/* ============ 分配跟进人（仅管理员）/ 删除 ============ */
 
 const assignSchema = z.object({
   ids: z.array(z.string().cuid()).min(1).max(200),
@@ -167,8 +167,9 @@ router.post('/assign', requirePerm(PERM.LEAD_MANAGE), async (req, res) => {
   ok(res, r);
 });
 
-router.delete('/:id', requirePerm(PERM.LEAD_MANAGE), async (req, res) => {
-  const lead = await deleteLead(req.params.id);
+// 管理员可删全部；员工只能删自己创建的
+router.delete('/:id', requirePerm(PERM.LEAD_EDIT), async (req, res) => {
+  const lead = await deleteLead(req.params.id, req.user!.permissions.includes(PERM.LEAD_MANAGE) ? undefined : req.user!.id);
   writeAudit(req, { module: 'lead', action: 'delete', targetId: lead.id, targetName: lead.studentName });
   ok(res, null);
 });

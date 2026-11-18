@@ -11,6 +11,7 @@ import {
   getDealOverview,
   createDeal,
   updateDeal,
+  deleteDeal,
   settleDeals,
   revokeSettle,
   listOrgOptions,
@@ -140,6 +141,8 @@ router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
 /* ============ 修改成交 ============ */
 
 const updateSchema = z.object({
+  /** 更换机构：仅管理员 */
+  orgId: z.string().cuid().optional(),
   productId: z.string().cuid().nullish(),
   studentName: z.string().trim().min(1).max(50).optional(),
   studentPhone: z.string().max(20).nullish(),
@@ -161,6 +164,31 @@ router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   });
   writeAudit(req, { module: 'deal', action: 'update', targetId: req.params.id, after: input });
   ok(res, { id: req.params.id });
+});
+
+/* ============ 删除成交（到账之前） ============ */
+
+router.delete('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
+  const u = req.user!;
+  const deal = await deleteDeal(req.params.id, {
+    // 管理员可删全部；机构只能删本机构的；员工只能删自己录入的
+    orgId: u.role === 'ORG' ? u.orgId! : undefined,
+    userId: u.role === 'STAFF' ? u.id : undefined,
+  });
+  writeAudit(req, {
+    module: 'deal',
+    action: 'delete',
+    targetId: deal.id,
+    targetName: deal.studentName,
+    before: {
+      机构: deal.org.name,
+      成交日期: fmtDay(deal.dealAt),
+      成交额: Number(deal.amount),
+      佣金: Number(deal.commission),
+      备注: deal.note,
+    },
+  });
+  ok(res, null);
 });
 
 /* ============ 结算（仅管理员） ============ */

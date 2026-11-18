@@ -309,9 +309,11 @@ export async function assignLeads(ids: string[], assigneeId: string | null) {
   return { updated: r.count };
 }
 
-export async function deleteLead(id: string) {
+/** creatorId：只允许删除该用户创建的线索（员工） */
+export async function deleteLead(id: string, creatorId?: string) {
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) throw new AppError(404, '线索不存在');
+  if (creatorId && lead.createdById !== creatorId) throw new AppError(403, '只能删除自己创建的线索');
   await prisma.lead.delete({ where: { id } });
   return lead;
 }

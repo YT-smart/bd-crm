@@ -27,6 +27,8 @@ const auth = useAuthStore();
 /** 管理员：看全部、分配跟进人、删除；员工只看自己录入或分给自己的 */
 const canManage = computed(() => auth.can(PERM.LEAD_MANAGE));
 const canEdit = computed(() => auth.can(PERM.LEAD_EDIT));
+/** 删除：管理员全部；员工只能删自己创建的 */
+const canDelete = (l: { createdById: string }) => canManage.value || (canEdit.value && l.createdById === auth.user?.id);
 const canSign = computed(() => auth.can(PERM.DEAL_CREATE) && auth.user?.role !== 'ORG');
 
 /* ---------- 筛选 ---------- */
@@ -215,7 +217,7 @@ async function doAssign() {
   }
 }
 
-/* ---------- 删除（管理员） ---------- */
+/* ---------- 删除（管理员全部，员工自己创建的） ---------- */
 function handleDelete(l: LeadListItem) {
   dialog.warning({
     title: '删除线索',
@@ -285,12 +287,12 @@ const columns = computed<DataTableColumns<LeadListItem>>(() => {
     },
     { title: '创建时间', key: 'createdAt', width: 100, render: (r) => h('span', { class: 'num text-2' }, date(r.createdAt)) },
     {
-      title: '操作', key: 'actions', width: canManage.value ? 150 : 110, fixed: 'right',
+      title: '操作', key: 'actions', width: 150, fixed: 'right',
       render: (r) => {
         const stop = (fn: () => void) => (e: Event) => { e.stopPropagation(); fn(); };
         const btns = [h('button', { class: 'link-btn sm', onClick: stop(() => openDrawer(r)) }, '跟进')];
         if (canEdit.value) btns.push(h('button', { class: 'link-btn sm', onClick: stop(() => openEdit(r)) }, '编辑'));
-        if (canManage.value) btns.push(h('button', { class: 'link-btn sm text-danger', onClick: stop(() => handleDelete(r)) }, '删除'));
+        if (canDelete(r)) btns.push(h('button', { class: 'link-btn sm text-danger', onClick: stop(() => handleDelete(r)) }, '删除'));
         return h('div', { style: 'display:flex;gap:12px;white-space:nowrap' }, btns);
       },
     },
