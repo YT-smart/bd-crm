@@ -113,7 +113,7 @@ export const ATTACHMENT_MAX_MB = 20;
  * 所以库里存的是任意字符串，这里只是推荐项。
  */
 export const BUSINESS_TYPES = [
-  '美本', '港英本', '美硕', '港英硕', '竞赛', '科研', '艺术作品', '单文书', '雅思', '托福', 'A-Level', 'SAT', 'ACCP',
+  '美高', '美本', '港英本', '美硕', '港英硕', '竞赛', '科研', '艺术作品', '单文书', '雅思', '托福', 'A-Level', 'SAT', 'ACCP', '求职', '实习',
 ] as const;
 /** 自定义业务类型的长度上限 */
 export const BUSINESS_TYPE_MAX_LEN = 20;
