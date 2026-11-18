@@ -42,7 +42,7 @@ onMounted(async () => {
             <span v-if="data.org.level" class="pill pill-neutral plain">{{ data.org.level }} 级</span>
           </div>
           <p class="org-sub">
-            默认佣金比例 <strong class="num">{{ data.org.defaultRate }}%</strong>
+            默认佣金比例 <strong class="num">{{ data.org.defaultRate ? `${data.org.defaultRate}%` : '--' }}</strong>
           </p>
         </div>
         <div class="org-complete">

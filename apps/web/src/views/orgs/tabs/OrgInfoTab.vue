@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
 import {
-  NForm, NFormItem, NInput, NDatePicker, NSelect, NDynamicTags, useMessage,
+  NForm, NFormItem, NInput, NInputNumber, NDatePicker, NSelect, NDynamicTags, useMessage,
   type SelectOption, type SelectGroupOption,
 } from 'naive-ui';
 import { Save } from 'lucide-vue-next';
 import {
   BUSINESS_TYPES, BUSINESS_TYPE_MAX_LEN, COUNTRY_GROUPS, PROVINCES, ORG_LEVELS, CITIES_BY_PROVINCE, PROVINCE_OF_CITY,
-  shortProvinceName, type OrgDetail, type Province,
+  PERM, shortProvinceName, type OrgDetail, type Province,
 } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
@@ -20,7 +20,10 @@ const emit = defineEmits<{ updated: []; qrChanged: [] }>();
 const message = useMessage();
 const saving = ref(false);
 /** 机构账号不能改名称、等级、标签（内部字段） */
-const isOrgUser = computed(() => useAuthStore().user?.role === 'ORG');
+const auth = useAuthStore();
+const isOrgUser = computed(() => auth.user?.role === 'ORG');
+/** 默认佣金：机构账号和管理员可以改，员工不行 */
+const canEditRate = computed(() => isOrgUser.value || auth.can(PERM.ORG_COOPERATION));
 
 const form = reactive({
   name: '',
@@ -38,6 +41,7 @@ const form = reactive({
   tags: [] as string[],
   level: null as string | null,
   cooperateAt: null as number | null,
+  defaultRate: null as number | null,
 });
 
 /** 业务类型下拉里的「其他（自定义）」 */
@@ -66,6 +70,8 @@ function resetForm() {
   form.tags = [...props.org.tags];
   form.level = props.org.level;
   form.cooperateAt = new Date(props.org.cooperateAt).getTime();
+  // 0 视为未填写，输入框留空
+  form.defaultRate = props.org.defaultRate || null;
   queueMicrotask(() => (resetting = false));
 }
 
@@ -141,6 +147,7 @@ const isDirty = computed(() => {
     form.scale !== (o.scale ?? '') ||
     form.level !== o.level ||
     form.cooperateAt !== new Date(o.cooperateAt).getTime() ||
+    (canEditRate.value && (form.defaultRate ?? 0) !== o.defaultRate) ||
     // 勾了「其他」也算改动，这样点保存时能提示去填写
     form.businessTypes.includes(OTHER) ||
     JSON.stringify(finalBusinessTypes()) !== JSON.stringify(o.businessTypes) ||
@@ -160,6 +167,7 @@ function missingFields(): string[] {
   if (blank(form.address)) miss.push('详细地址');
   if (blank(form.scale)) miss.push('机构规模');
   if (!form.cooperateAt) miss.push('合作时间');
+  if (canEditRate.value && form.defaultRate == null) miss.push('默认佣金');
   if (blank(form.website)) miss.push('官网');
   if (blank(form.wechat)) miss.push('公众号');
   if (!finalBusinessTypes().length) miss.push('业务类型');
@@ -200,6 +208,7 @@ async function save() {
       countries: form.countries,
       officeCities: form.officeCities,
       cooperateAt: new Date(form.cooperateAt!).toISOString(),
+      ...(canEditRate.value ? { defaultRate: form.defaultRate! } : {}),
     });
     message.success('已保存');
     emit('updated');
@@ -242,6 +251,11 @@ async function save() {
         </NFormItem>
         <NFormItem label="合作时间" required>
           <NDatePicker v-model:value="form.cooperateAt" type="date" :is-date-disabled="(t: number) => t > Date.now()" style="width: 100%" />
+        </NFormItem>
+        <NFormItem v-if="canEditRate" label="默认佣金" required>
+          <NInputNumber v-model:value="form.defaultRate" :min="0" :max="100" :precision="1" placeholder="如: 15" style="width: 100%">
+            <template #suffix>%</template>
+          </NInputNumber>
         </NFormItem>
         <NFormItem label="官网" required>
           <NInput v-model:value="form.website" placeholder="https://..." maxlength="200" />

@@ -53,7 +53,7 @@ const emit = defineEmits<{ edit: [] }>();
       </div>
       <div v-if="showRate" class="kv-row">
         <span class="kv-label">默认佣金</span>
-        <span class="kv-value num">{{ org.defaultRate }}%</span>
+        <span class="kv-value num">{{ org.defaultRate ? `${org.defaultRate}%` : '--' }}</span>
       </div>
       <div v-if="internal" class="kv-row">
         <span class="kv-label">标签</span>

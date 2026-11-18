@@ -100,7 +100,7 @@ async function save() {
 
     <div class="kv-list">
       <div class="kv-row"><span class="kv-label">合作状态</span><span class="kv-value"><StatusTag kind="org" :status="org.status" /></span></div>
-      <div class="kv-row"><span class="kv-label">默认佣金</span><span class="kv-value num">{{ org.defaultRate }}%</span></div>
+      <div class="kv-row"><span class="kv-label">默认佣金</span><span class="kv-value num">{{ org.defaultRate ? `${org.defaultRate}%` : '--' }}</span></div>
       <div class="kv-row"><span class="kv-label">结算周期</span><span class="kv-value">{{ org.settleCycle ? SETTLE_CYCLE_LABEL[org.settleCycle] : '--' }}</span></div>
       <div class="kv-row"><span class="kv-label">合同期限</span><span class="kv-value num">{{ contractText }}</span></div>
       <div class="kv-row"><span class="kv-label">开户银行</span><span class="kv-value">{{ org.bankInfo?.bankName || '--' }}</span></div>

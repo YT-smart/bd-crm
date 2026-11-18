@@ -224,9 +224,9 @@ const updateSchema = z.object({
   ownerId: z.string().cuid().nullish(),
 });
 
-/** 机构账号只能维护自己的基本资料与收款账户，佣金/等级/状态/负责 BD/合同等由员工维护 */
+/** 机构账号只能维护自己的基本资料、默认佣金与收款账户，等级/状态/负责 BD/合同等由内部维护 */
 const ORG_EDITABLE = new Set([
-  'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale', 'cooperateAt',
+  'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale', 'cooperateAt', 'defaultRate',
   'businessTypes', 'countries', 'officeCities', 'bankInfo',
 ]);
 
@@ -253,6 +253,9 @@ router.put('/:id', requirePerm(...CAN_EDIT), async (req, res) => {
   assertBasicFilled(input);
   if (req.user!.role === 'ORG') {
     input = Object.fromEntries(Object.entries(input).filter(([k]) => ORG_EDITABLE.has(k))) as typeof input;
+  } else if (!req.user!.permissions.includes(PERM.ORG_COOPERATION)) {
+    // 默认佣金只有机构自己和管理员能改，员工不行
+    delete input.defaultRate;
   }
 
   // 处理可空日期字段

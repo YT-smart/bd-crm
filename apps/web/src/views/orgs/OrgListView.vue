@@ -383,7 +383,8 @@ const columns = computed<DataTableColumns<OrgListItem>>(() => [
           align: 'center' as const,
           sorter: true,
           sortOrder: sort.value?.key === 'defaultRate' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
-          render: (r: OrgListItem) => h('span', { class: 'num' }, `${r.defaultRate.toFixed(1)}%`),
+          // 默认佣金为 0 视为未填写
+          render: (r: OrgListItem) => h('span', { class: 'num' }, r.defaultRate ? `${r.defaultRate.toFixed(1)}%` : '--'),
         } as DataTableColumns<OrgListItem>[number],
       ]
     : []),

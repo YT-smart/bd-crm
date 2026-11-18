@@ -175,7 +175,7 @@ function handleDelete(p: OrgProductItem) {
             </td>
             <td class="num nowrap">{{ priceText(p) }}</td>
             <td v-if="showRate" class="num nowrap">
-              <span :class="{ rate: p.rate != null }">{{ p.rate ?? defaultRate }}%</span>
+              <span :class="{ rate: p.rate != null }">{{ p.rate != null ? `${p.rate}%` : defaultRate ? `${defaultRate}%` : '--' }}</span>
             </td>
             <td class="note">{{ p.note || '-' }}</td>
             <td v-if="canEdit" class="op">
@@ -245,7 +245,7 @@ function handleDelete(p: OrgProductItem) {
             :min="0"
             :max="100"
             :precision="1"
-            :placeholder="`留空则按默认 ${defaultRate}%`"
+            :placeholder="defaultRate ? `留空则按默认 ${defaultRate}%` : '留空则按机构默认佣金'"
             style="width: 200px"
           >
             <template #suffix>%</template>
