@@ -18,6 +18,7 @@ import {
   type PageResult,
   type StaffOption,
 } from '@bdcrm/shared';
+import { removeThumbnail } from '../lib/thumbnail';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/http';
 import { generatePassword, hashPassword } from '../lib/security';
@@ -89,8 +90,8 @@ export async function orgFilterFacets() {
 export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize'>> & OrgListQuery): Promise<PageResult<OrgListItem>> {
   const where = buildOrgWhere(q);
 
-  // 默认按成交率从高到低
-  const sort = q.sort ?? 'dealRate';
+  // 默认按资料完整度从高到低
+  const sort = q.sort ?? 'completeness';
   const order = q.order ?? 'desc';
   const skip = (q.page - 1) * q.pageSize;
   const include = { owner: { select: { name: true } } } as const;
@@ -130,7 +131,7 @@ export async function listOrgs(q: Required<Pick<OrgListQuery, 'page' | 'pageSize
     const orderBy: Prisma.OrgOrderByWithRelationInput[] =
       sort === 'level'
         ? [{ level: { sort: order, nulls: 'last' } }, { createdAt: 'desc' }]
-        : [{ [sort]: order }];
+        : [{ [sort]: order }, { createdAt: 'desc' }];
     [total, rows] = await Promise.all([
       prisma.org.count({ where }),
       prisma.org.findMany({ where, orderBy, skip, take: q.pageSize, include }),
@@ -614,6 +615,7 @@ export async function deleteAttachment(attachmentId: string) {
   if (!a) throw new AppError(404, '附件不存在');
   await prisma.attachment.delete({ where: { id: attachmentId } });
   await removeStoredFile(a.url);
+  await removeThumbnail(attachmentId);
 }
 
 /* ---------- 公众号二维码 ---------- */

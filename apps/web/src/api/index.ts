@@ -116,6 +116,8 @@ export const orgApi = {
   },
   attachmentUrl: (orgId: string, attId: string, inline = false) =>
     `/api/orgs/${orgId}/attachments/${attId}/download${inline ? '?inline=1' : ''}`,
+  /** 图片附件的缩略图（服务端首次请求时生成） */
+  attachmentThumbUrl: (orgId: string, attId: string) => `/api/orgs/${orgId}/attachments/${attId}/download?inline=1&thumb=1`,
   deleteAttachment: (orgId: string, attId: string) => http.del<null>(`/orgs/${orgId}/attachments/${attId}`),
   /** 生成免登录分享链接，days = 0 表示永久有效 */
   shareAttachment: (orgId: string, attId: string, days: 0 | 1 | 7 | 30) =>

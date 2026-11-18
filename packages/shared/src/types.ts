@@ -243,7 +243,7 @@ export interface OrgListQuery {
   city?: string;
   /** 业务类型 */
   businessType?: string;
-  sort?: 'createdAt' | 'cooperateAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate';
+  sort?: 'createdAt' | 'cooperateAt' | 'defaultRate' | 'name' | 'level' | 'dealCount' | 'dealRate' | 'completeness';
   order?: 'asc' | 'desc';
 }
 

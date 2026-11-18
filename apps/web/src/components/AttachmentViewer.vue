@@ -2,12 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NSpin } from 'naive-ui';
 import { Download, FileQuestion, X } from 'lucide-vue-next';
+import ImageZoom from './ImageZoom.vue';
 
 /**
  * 附件在线查看：图片 / PDF / 纯文本 / Word(docx) / Excel(xlsx、xls)。
  * 文件拉取为 Blob 后在页面内渲染。弹窗预览（AttachmentPreview）与分享页共用。
  */
-const props = withDefaults(defineProps<{ name: string; url: string; downloadUrl: string; closable?: boolean }>(), {
+/** thumbUrl：图片缩略图，原图下载完之前先显示 */
+const props = withDefaults(defineProps<{ name: string; url: string; downloadUrl: string; thumbUrl?: string; closable?: boolean }>(), {
   closable: true,
 });
 const emit = defineEmits<{ close: [] }>();
@@ -111,7 +113,8 @@ export function previewKind(name: string): 'image' | 'pdf' | 'text' | 'docx' | '
       </header>
 
       <div :class="['pv-body', `pv-${kind}`]">
-        <div v-if="loading" class="pv-center"><NSpin size="medium" /></div>
+        <ImageZoom v-if="kind === 'image' && (blobUrl || (thumbUrl && loading))" :src="blobUrl" :placeholder="thumbUrl" :alt="name" />
+        <div v-if="loading" class="pv-center pv-loading"><NSpin size="medium" /></div>
         <div v-if="error" class="pv-center pv-msg">{{ error }}</div>
 
         <div v-if="kind === 'none'" class="pv-center pv-msg">
@@ -119,7 +122,6 @@ export function previewKind(name: string): 'image' | 'pdf' | 'text' | 'docx' | '
           <div>.{{ ext }} 格式暂不支持在线预览，请下载后查看</div>
         </div>
 
-        <img v-else-if="kind === 'image' && blobUrl" class="pv-img" :src="blobUrl" :alt="name" />
         <iframe v-else-if="kind === 'pdf' && blobUrl" class="pv-frame" :src="blobUrl" :title="name" />
         <pre v-else-if="kind === 'text' && !loading && !error" class="pv-text">{{ text }}</pre>
         <div v-show="kind === 'docx' && !error" ref="docxEl" class="pv-docx" />
@@ -208,22 +210,12 @@ export function previewKind(name: string): 'image' | 'pdf' | 'text' | 'docx' | '
   justify-content: center;
   gap: 10px;
 }
+.pv-loading { pointer-events: none; }
 .pv-msg {
   color: var(--text-2);
   font-size: 14px;
 }
-.pv-image {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.pv-img {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  margin: auto;
-  object-fit: contain;
-}
+.pv-image { overflow: hidden; }
 .pv-pdf { overflow: hidden; }
 .pv-frame {
   width: 100%;

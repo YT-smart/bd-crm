@@ -20,6 +20,7 @@ import { requirePerm } from '../middlewares/auth';
 import { PASSWORD_RULE } from '../lib/security';
 import { canInline, decodeOriginalName, isPdf, mimeOf, orgImageUploader, orgUploader, removeStoredFile, resolveStorageKey, toStorageKey } from '../lib/storage';
 import { createShareToken } from '../lib/share';
+import { canThumb, getThumbnail } from '../lib/thumbnail';
 import { fmtDay } from '../lib/date';
 import { writeAudit } from '../services/audit.service';
 import {
@@ -81,7 +82,7 @@ const listSchema = z.object({
   country: z.enum(COUNTRIES).optional(),
   city: citySchema.optional(),
   businessType: z.string().trim().min(1).max(BUSINESS_TYPE_MAX_LEN).optional(),
-  sort: z.enum(['createdAt', 'cooperateAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate']).optional(),
+  sort: z.enum(['createdAt', 'cooperateAt', 'defaultRate', 'name', 'level', 'dealCount', 'dealRate', 'completeness']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -451,6 +452,19 @@ router.post(
 
 router.get('/:id/attachments/:attId/download', requirePerm(...CAN_VIEW), async (req, res) => {
   const a = await getAttachment(req.params.id, req.params.attId);
+  // 列表缩略图：生成失败（图片损坏等）时退回原图
+  if (req.query.thumb === '1' && canThumb(a.name)) {
+    try {
+      const file = await getThumbnail(a.id, a.url);
+      res.setHeader('Cache-Control', 'private, max-age=2592000, immutable');
+      res.sendFile(file, { headers: { 'Content-Type': 'image/webp' } }, (err) => {
+        if (err && !res.headersSent) res.status(404).json({ code: 404, data: null, message: '文件已丢失' });
+      });
+      return;
+    } catch {
+      /* 退回原图 */
+    }
+  }
   const abs = resolveStorageKey(a.url);
   // 只有图片 / PDF / 纯文本允许内联预览，其余一律作为下载
   const inline = req.query.inline === '1' && canInline(a.name);

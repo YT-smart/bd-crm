@@ -58,8 +58,8 @@ function fromQuery() {
 
 const filters = reactive(fromQuery());
 const pageSize = ref(20);
-/** 默认按成交率从高到低 */
-const sort = ref<{ key: OrgListQuery['sort']; order: 'asc' | 'desc' } | null>({ key: 'dealRate', order: 'desc' });
+/** 默认按资料完整度从高到低 */
+const sort = ref<{ key: OrgListQuery['sort']; order: 'asc' | 'desc' } | null>({ key: 'completeness', order: 'desc' });
 
 const rows = ref<OrgListItem[]>([]);
 const total = ref(0);
@@ -243,11 +243,11 @@ function onPageSize(s: number) {
   load();
 }
 function onSorter(s: DataTableSortState | null) {
-  // 取消排序时回到默认：成交率从高到低（与后端默认一致，表头箭头也保持一致）
+  // 取消排序时回到默认：资料完整度从高到低（与后端默认一致）
   sort.value =
     s && s.order
       ? { key: s.columnKey as OrgListQuery['sort'], order: s.order === 'ascend' ? 'asc' : 'desc' }
-      : { key: 'dealRate', order: 'desc' };
+      : { key: 'completeness', order: 'desc' };
   load();
 }
 

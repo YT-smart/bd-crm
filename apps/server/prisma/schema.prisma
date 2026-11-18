@@ -116,7 +116,7 @@ model Org {
   officeCities  String[]
   tags          String[]
   level         String? // A / B / C
-  status        OrgStatus   @default(NEGOTIATING)
+  status        OrgStatus   @default(ACTIVE)
   defaultRate   Decimal     @db.Decimal(5, 2) // 默认佣金比例（%）
   settleCycle   SettleCycle?
   bankInfo      Json?

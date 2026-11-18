@@ -43,7 +43,7 @@ const cycleOptions = (Object.keys(SETTLE_CYCLE_LABEL) as SettleCycle[]).map((k) 
 }));
 
 const form = reactive({
-  status: 'NEGOTIATING' as OrgStatus,
+  status: 'ACTIVE' as OrgStatus,
   defaultRate: 0,
   settleCycle: null as SettleCycle | null,
   contractStart: null as number | null,

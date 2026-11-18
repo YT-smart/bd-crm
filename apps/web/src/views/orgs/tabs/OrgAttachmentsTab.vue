@@ -216,7 +216,7 @@ const canDelete = (a: OrgAttachmentItem) =>
     <div v-else class="grid">
       <div v-for="a in filtered" :key="a.id" class="file">
         <button v-if="isImage(a)" class="thumb img" title="在线预览" @click="openPreview(a)">
-          <img :src="url(a, true)" :alt="a.name" loading="lazy" />
+          <img :src="orgApi.attachmentThumbUrl(orgId, a.id)" :alt="a.name" loading="lazy" />
         </button>
         <div v-else :class="['thumb', `tone-${toneOf(a)}`]">
           <component :is="iconOf(a)" :size="20" :stroke-width="1.6" />
@@ -251,6 +251,7 @@ const canDelete = (a: OrgAttachmentItem) =>
       :name="previewing?.name ?? ''"
       :url="previewing ? url(previewing, true) : ''"
       :download-url="previewing ? url(previewing) : ''"
+      :thumb-url="previewing && isImage(previewing) ? orgApi.attachmentThumbUrl(orgId, previewing.id) : undefined"
     >
       <template v-if="previewing" #actions>
         <ShareLinkButton :org-id="orgId" :att-id="previewing.id" label="分享链接" />
