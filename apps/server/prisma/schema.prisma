@@ -188,6 +188,7 @@ model Deal {
   org          Org        @relation(fields: [orgId], references: [id], onDelete: Restrict)
   productId    String?
   product      OrgProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  customProduct String? // 产品选「其他」时手填的产品名
   studentName  String
   studentPhone String?
   dealAt       DateTime

@@ -83,7 +83,7 @@ router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
   const data = rows.map((d) => ({
     orgName: d.org.name,
     studentName: d.studentName,
-    productName: d.product?.name ?? '',
+    productName: d.product?.name ?? d.customProduct ?? '',
     dealAt: fmtDay(d.dealAt),
     amount: Number(d.amount),
     rate: Number(d.rate),
@@ -109,6 +109,8 @@ router.get('/', requirePerm(PERM.DEAL_VIEW), async (req, res) => {
 const createSchema = z.object({
   orgId: z.string().cuid(),
   productId: z.string().cuid().nullish(),
+  /** 产品选「其他」时手填 */
+  customProduct: z.string().trim().max(50).nullish(),
   studentName: z.string().trim().min(1, '学生姓名不能为空').max(50),
   studentPhone: z.string().max(20).nullish(),
   dealAt: z.string().datetime({ message: '成交日期格式有误' }),
@@ -120,6 +122,7 @@ const createSchema = z.object({
 
 router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const input = createSchema.parse(req.body);
+  if (!input.productId && !input.customProduct) throw Errors.badRequest('请选择产品');
 
   // 机构角色只能为自己的机构录入
   if (req.user!.role === 'ORG' && input.orgId !== req.user!.orgId) {
@@ -144,6 +147,7 @@ const updateSchema = z.object({
   /** 更换机构：仅管理员 */
   orgId: z.string().cuid().optional(),
   productId: z.string().cuid().nullish(),
+  customProduct: z.string().trim().max(50).nullish(),
   studentName: z.string().trim().min(1).max(50).optional(),
   studentPhone: z.string().max(20).nullish(),
   dealAt: z.string().datetime().optional(),

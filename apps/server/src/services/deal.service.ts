@@ -99,7 +99,8 @@ export async function listDeals(
       orgId: d.orgId,
       orgName: d.org.name,
       productId: d.productId,
-      productName: d.product?.name ?? null,
+      productName: d.product?.name ?? d.customProduct ?? null,
+      customProduct: d.customProduct,
       studentName: d.studentName,
       studentPhone: d.studentPhone,
       dealAt: d.dealAt.toISOString(),
@@ -256,6 +257,7 @@ export async function getDealOverview(source?: DealSource, now = new Date()): Pr
 interface CreateDealInput {
   orgId: string;
   productId?: string | null;
+  customProduct?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -294,6 +296,7 @@ export async function createDeal(input: CreateDealInput) {
     data: {
       orgId: input.orgId,
       productId: input.productId ?? null,
+      customProduct: input.productId ? null : input.customProduct || null,
       studentName: input.studentName,
       studentPhone: input.studentPhone ?? null,
       dealAt: new Date(input.dealAt),
@@ -315,6 +318,7 @@ export async function updateDeal(
   input: {
     orgId?: string;
     productId?: string | null;
+    customProduct?: string | null;
     studentName?: string;
     studentPhone?: string | null;
     dealAt?: string;
@@ -355,6 +359,12 @@ export async function updateDeal(
   }
 
   if (input.productId !== undefined) data.productId = input.productId;
+  // 选了机构产品就清掉手填的；手填「其他」时不关联机构产品
+  if (input.productId) data.customProduct = null;
+  else if (input.customProduct) {
+    data.customProduct = input.customProduct;
+    data.productId = null;
+  }
   if (input.studentName) data.studentName = input.studentName;
   if (input.studentPhone !== undefined) data.studentPhone = input.studentPhone;
   if (input.dealAt) data.dealAt = new Date(input.dealAt);

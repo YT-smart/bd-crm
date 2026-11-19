@@ -462,7 +462,10 @@ export interface DealListItem {
   orgId: string;
   orgName: string;
   productId: string | null;
+  /** 产品名：机构产品名，或选「其他」时手填的 */
   productName: string | null;
+  /** 选「其他」时手填的产品名 */
+  customProduct: string | null;
   studentName: string;
   studentPhone: string | null;
   dealAt: string;
@@ -503,6 +506,7 @@ export interface DealListQuery {
 export interface DealCreateInput {
   orgId: string;
   productId?: string | null;
+  customProduct?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -516,6 +520,7 @@ export interface DealUpdateInput {
   /** 更换机构：仅管理员 */
   orgId?: string;
   productId?: string | null;
+  customProduct?: string | null;
   studentName?: string;
   studentPhone?: string | null;
   dealAt?: string;

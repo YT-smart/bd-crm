@@ -32,9 +32,13 @@ async function loadOrgOptions() {
   }
 }
 
+/** 产品下拉里的「其他」：选中后手填产品名 */
+const OTHER = '__other__';
+
 const form = reactive({
   orgId: null as string | null,
   productId: null as string | null,
+  customProduct: '',
   studentName: '',
   studentPhone: '',
   dealAt: Date.now() as number | null,
@@ -47,9 +51,11 @@ const form = reactive({
 let filling = false;
 
 const selectedOrg = computed(() => orgOptions.value.find((o) => o.id === form.orgId));
-const productOptions = computed(
-  () => selectedOrg.value?.products.map((p) => ({ label: `${p.name}（${p.type}）`, value: p.id })) ?? [],
-);
+const productOptions = computed(() => [
+  ...(selectedOrg.value?.products.map((p) => ({ label: `${p.name}（${p.type}）`, value: p.id })) ?? []),
+  { label: '其他', value: OTHER },
+]);
+const isOther = computed(() => form.productId === OTHER);
 
 /** 约定比例：产品单独比例优先，否则机构默认比例 */
 function agreedRate() {
@@ -84,7 +90,8 @@ watch(show, async (open) => {
     filling = true;
     Object.assign(form, {
       orgId: d.orgId,
-      productId: d.productId,
+      productId: d.productId ?? (d.customProduct ? OTHER : null),
+      customProduct: d.customProduct ?? '',
       studentName: d.studentName,
       studentPhone: d.studentPhone ?? '',
       dealAt: new Date(d.dealAt).getTime(),
@@ -100,6 +107,7 @@ watch(show, async (open) => {
   Object.assign(form, {
     orgId: props.orgId ?? (auth.user?.role === 'ORG' ? auth.user.orgId : null),
     productId: null,
+    customProduct: '',
     studentName: '',
     studentPhone: '',
     dealAt: Date.now(),
@@ -113,12 +121,15 @@ watch(show, async (open) => {
 const creating = ref(false);
 async function submit() {
   if (!form.orgId) { message.warning('请选择机构'); return; }
+  if (!form.productId) { message.warning('请选择产品'); return; }
+  if (isOther.value && !form.customProduct.trim()) { message.warning('请填写产品名称'); return; }
   if (!form.studentName.trim()) { message.warning('请输入学生姓名'); return; }
   if (!form.dealAt) { message.warning('请选择成交日期'); return; }
   if (form.amount <= 0) { message.warning('成交金额须大于0'); return; }
   creating.value = true;
   const base = {
-    productId: form.productId,
+    productId: isOther.value ? null : form.productId,
+    customProduct: isOther.value ? form.customProduct.trim() : null,
     studentName: form.studentName.trim(),
     dealAt: new Date(form.dealAt).toISOString(),
     amount: form.amount,
@@ -162,8 +173,17 @@ async function submit() {
           :disabled="!!orgId || auth.user?.role === 'ORG' || (editing && auth.user?.role !== 'ADMIN')"
         />
       </NFormItem>
-      <NFormItem v-if="productOptions.length" label="产品">
-        <NSelect v-model:value="form.productId" :options="productOptions" clearable placeholder="选择产品（可选）" />
+      <NFormItem label="产品" required>
+        <NSelect
+          v-model:value="form.productId"
+          :options="productOptions"
+          filterable
+          :placeholder="form.orgId ? '选择产品，没有的选「其他」' : '先选择机构'"
+          :disabled="!form.orgId"
+        />
+      </NFormItem>
+      <NFormItem v-if="isOther" label="产品名称" required>
+        <NInput v-model:value="form.customProduct" placeholder="填写产品名称" maxlength="50" />
       </NFormItem>
       <NFormItem label="学生姓名" required>
         <NInput v-model:value="form.studentName" placeholder="学生姓名" maxlength="50" />
