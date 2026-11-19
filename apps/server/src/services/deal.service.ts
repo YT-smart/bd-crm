@@ -101,6 +101,7 @@ export async function listDeals(
       productId: d.productId,
       productName: d.product?.name ?? d.customProduct ?? null,
       customProduct: d.customProduct,
+      leadCategory: d.leadCategory,
       studentName: d.studentName,
       studentPhone: d.studentPhone,
       dealAt: d.dealAt.toISOString(),
@@ -258,6 +259,7 @@ interface CreateDealInput {
   orgId: string;
   productId?: string | null;
   customProduct?: string | null;
+  leadCategory?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -297,6 +299,7 @@ export async function createDeal(input: CreateDealInput) {
       orgId: input.orgId,
       productId: input.productId ?? null,
       customProduct: input.productId ? null : input.customProduct || null,
+      leadCategory: input.leadCategory || null,
       studentName: input.studentName,
       studentPhone: input.studentPhone ?? null,
       dealAt: new Date(input.dealAt),
@@ -319,6 +322,7 @@ export async function updateDeal(
     orgId?: string;
     productId?: string | null;
     customProduct?: string | null;
+    leadCategory?: string | null;
     studentName?: string;
     studentPhone?: string | null;
     dealAt?: string;
@@ -370,6 +374,7 @@ export async function updateDeal(
   if (input.dealAt) data.dealAt = new Date(input.dealAt);
   if (input.amount !== undefined) data.amount = input.amount;
   if (input.note !== undefined) data.note = input.note;
+  if (input.leadCategory !== undefined) data.leadCategory = input.leadCategory || null;
 
   if (scope.enforceAgreedRate) {
     // 机构、员工：比例与佣金始终按约定重新计算

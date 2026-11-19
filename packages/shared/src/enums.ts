@@ -38,6 +38,9 @@ export const ORG_STATUS_LABEL: Record<OrgStatus, string> = {
 };
 
 /** 待到账 / 已结算（待审核、已驳回是以前的审核流程留下的，已不再使用） */
+/** 成交的线索分类（员工录入必填，机构录入不填）；选「其他」时手填 */
+export const DEAL_LEAD_CATEGORIES = ['主账号', '投流线索', '矩阵线索', '老客户推荐', '私域升单', '私享会'] as const;
+
 export const DealStatus = {
   PENDING_AUDIT: 'PENDING_AUDIT',
   REJECTED: 'REJECTED',

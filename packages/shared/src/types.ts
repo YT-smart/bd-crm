@@ -466,6 +466,8 @@ export interface DealListItem {
   productName: string | null;
   /** 选「其他」时手填的产品名 */
   customProduct: string | null;
+  /** 线索分类（员工录入） */
+  leadCategory: string | null;
   studentName: string;
   studentPhone: string | null;
   dealAt: string;
@@ -507,6 +509,7 @@ export interface DealCreateInput {
   orgId: string;
   productId?: string | null;
   customProduct?: string | null;
+  leadCategory?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -521,6 +524,7 @@ export interface DealUpdateInput {
   orgId?: string;
   productId?: string | null;
   customProduct?: string | null;
+  leadCategory?: string | null;
   studentName?: string;
   studentPhone?: string | null;
   dealAt?: string;

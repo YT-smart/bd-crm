@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { NDatePicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useMessage } from 'naive-ui';
-import type { DealListItem, OrgOption } from '@bdcrm/shared';
+import { DEAL_LEAD_CATEGORIES, type DealListItem, type OrgOption } from '@bdcrm/shared';
 import { dealApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -39,6 +39,8 @@ const form = reactive({
   orgId: null as string | null,
   productId: null as string | null,
   customProduct: '',
+  leadCategory: null as string | null,
+  customCategory: '',
   studentName: '',
   studentPhone: '',
   dealAt: Date.now() as number | null,
@@ -56,6 +58,19 @@ const productOptions = computed(() => [
   { label: '其他', value: OTHER },
 ]);
 const isOther = computed(() => form.productId === OTHER);
+
+/** 线索分类：员工（含管理员）录入必填；机构录入的成交不需要 */
+const needCategory = computed(
+  () => auth.user?.role !== 'ORG' && !(editing.value && props.deal?.createdByRole === 'ORG'),
+);
+const categoryOptions = [...DEAL_LEAD_CATEGORIES.map((c) => ({ label: c, value: c as string })), { label: '其他', value: OTHER }];
+const isOtherCategory = computed(() => form.leadCategory === OTHER);
+function splitCategory(v: string | null) {
+  if (!v) return { leadCategory: null, customCategory: '' };
+  return (DEAL_LEAD_CATEGORIES as readonly string[]).includes(v)
+    ? { leadCategory: v, customCategory: '' }
+    : { leadCategory: OTHER, customCategory: v };
+}
 
 /** 约定比例：产品单独比例优先，否则机构默认比例 */
 function agreedRate() {
@@ -92,6 +107,7 @@ watch(show, async (open) => {
       orgId: d.orgId,
       productId: d.productId ?? (d.customProduct ? OTHER : null),
       customProduct: d.customProduct ?? '',
+      ...splitCategory(d.leadCategory),
       studentName: d.studentName,
       studentPhone: d.studentPhone ?? '',
       dealAt: new Date(d.dealAt).getTime(),
@@ -108,6 +124,8 @@ watch(show, async (open) => {
     orgId: props.orgId ?? (auth.user?.role === 'ORG' ? auth.user.orgId : null),
     productId: null,
     customProduct: '',
+    leadCategory: null,
+    customCategory: '',
     studentName: '',
     studentPhone: '',
     dealAt: Date.now(),
@@ -123,6 +141,8 @@ async function submit() {
   if (!form.orgId) { message.warning('请选择机构'); return; }
   if (!form.productId) { message.warning('请选择产品'); return; }
   if (isOther.value && !form.customProduct.trim()) { message.warning('请填写产品名称'); return; }
+  if (needCategory.value && !form.leadCategory) { message.warning('请选择线索分类'); return; }
+  if (needCategory.value && isOtherCategory.value && !form.customCategory.trim()) { message.warning('请填写线索分类'); return; }
   if (!form.studentName.trim()) { message.warning('请输入学生姓名'); return; }
   if (!form.dealAt) { message.warning('请选择成交日期'); return; }
   if (form.amount <= 0) { message.warning('成交金额须大于0'); return; }
@@ -130,6 +150,9 @@ async function submit() {
   const base = {
     productId: isOther.value ? null : form.productId,
     customProduct: isOther.value ? form.customProduct.trim() : null,
+    ...(needCategory.value
+      ? { leadCategory: isOtherCategory.value ? form.customCategory.trim() : form.leadCategory }
+      : {}),
     studentName: form.studentName.trim(),
     dealAt: new Date(form.dealAt).toISOString(),
     amount: form.amount,
@@ -184,6 +207,12 @@ async function submit() {
       </NFormItem>
       <NFormItem v-if="isOther" label="产品名称" required>
         <NInput v-model:value="form.customProduct" placeholder="填写产品名称" maxlength="50" />
+      </NFormItem>
+      <NFormItem v-if="needCategory" label="线索分类" required>
+        <NSelect v-model:value="form.leadCategory" :options="categoryOptions" placeholder="选择线索来源分类" />
+      </NFormItem>
+      <NFormItem v-if="needCategory && isOtherCategory" label="分类名称" required>
+        <NInput v-model:value="form.customCategory" placeholder="填写线索分类" maxlength="30" />
       </NFormItem>
       <NFormItem label="学生姓名" required>
         <NInput v-model:value="form.studentName" placeholder="学生姓名" maxlength="50" />

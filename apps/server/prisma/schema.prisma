@@ -189,6 +189,7 @@ model Deal {
   productId    String?
   product      OrgProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
   customProduct String? // 产品选「其他」时手填的产品名
+  leadCategory String? // 线索分类（员工录入必填）：主账号 / 投流线索 / ... 或「其他」时手填
   studentName  String
   studentPhone String?
   dealAt       DateTime

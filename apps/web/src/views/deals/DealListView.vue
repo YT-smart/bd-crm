@@ -382,6 +382,10 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
       }, r.orgName),
     },
     { title: '产品', key: 'productName', width: 140, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
+    // 线索分类只有员工录入才有，机构账号不显示
+    ...(auth.user?.role !== 'ORG'
+      ? [{ title: '线索分类', key: 'leadCategory', width: 110, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.leadCategory ?? '--' }]
+      : []),
     {
       title: '成交日期', key: 'dealAt', width: 110, sorter: true,
       sortOrder: sort.value?.key === 'dealAt' ? (sort.value.order === 'asc' ? 'ascend' : 'descend') : false,
