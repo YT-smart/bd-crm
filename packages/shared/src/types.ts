@@ -699,3 +699,55 @@ export interface LeadSignInput {
   commission: number;
   note?: string | null;
 }
+
+/* ============ 消息提醒 ============ */
+
+export type NotificationCategory = 'ORG' | 'LEAD' | 'DEAL';
+
+export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  ORG: '机构资料',
+  LEAD: '线索',
+  DEAL: '成交',
+};
+
+export interface NotificationItem {
+  id: string;
+  category: NotificationCategory;
+  /** 事件：org.update / lead.create / deal.create / deal.update / deal.delete / deal.sign */
+  type: string;
+  title: string;
+  content: string | null;
+  /** 点击跳转的前端路由 */
+  link: string | null;
+  /** 合并进来的事件数 */
+  count: number;
+  /** 机构资料提醒：具体改了什么（按时间先后） */
+  changes: ChangeLine[];
+  actorName: string;
+  read: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 未读数：ALL 为合计 */
+export type NotificationUnread = Record<NotificationCategory | 'ALL', number>;
+
+export interface NotificationListResult {
+  list: NotificationItem[];
+  total: number;
+  unread: NotificationUnread;
+}
+
+/** 机构资料的一处修改（消息提醒里展示「改了什么」） */
+export interface ChangeLine {
+  /** 修改项，如「机构简介」「联系人 张三 · 电话」「新增产品」 */
+  label: string;
+  before?: string | null;
+  after?: string | null;
+  /** 佣金、收款账户等只有管理员能看的内容：对没权限的人只显示改了哪项，不给具体值 */
+  sensitive?: boolean;
+  /** 没权限看具体值时为 true，before / after 已清空 */
+  hidden?: boolean;
+  /** 修改时间 */
+  at?: string;
+}

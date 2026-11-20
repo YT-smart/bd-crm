@@ -8,6 +8,7 @@ import leadRoutes from './lead.routes';
 import logRoutes from './log.routes';
 import userRoutes from './user.routes';
 import shareRoutes from './share.routes';
+import notificationRoutes from './notification.routes';
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.use('/deals', dealRoutes);
 router.use('/leads', leadRoutes);
 router.use('/logs', logRoutes);
 router.use('/users', userRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

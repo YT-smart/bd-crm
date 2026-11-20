@@ -459,6 +459,17 @@ const hasFilter = computed(
 );
 
 /* ---------- 初始化 ---------- */
+/** 消息提醒跳转过来时带 ?keyword=学生姓名，按学生筛出这笔成交 */
+watch(
+  () => route.query.keyword,
+  (kw) => {
+    if (typeof kw !== 'string' || !kw) return;
+    filters.keyword = kw;
+    router.replace({ query: { ...route.query, keyword: undefined } });
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   loadStaff();
   await Promise.all([loadSummary(), load()]);

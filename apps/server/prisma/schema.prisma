@@ -341,18 +341,36 @@ model FollowUp {
   @@index([orgId, followAt])
 }
 
+enum NotificationCategory {
+  ORG // 机构更新资料
+  LEAD // 员工录入线索
+  DEAL // 成交
+}
+
+/// 消息提醒：业务事件按角色权限分发给每个接收人一条；同一来源短时间内的事件合并成一条
 model Notification {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String
+  id        String               @id @default(cuid())
+  userId    String // 接收人
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  NotificationCategory
+  type      String // 事件：org.update / lead.create / deal.create / deal.update / deal.delete / deal.sign
   title     String
   content   String?
-  link      String?
+  link      String? // 点击跳转的前端路由
+  targetId  String?
+  groupKey  String? // 合并键：相同键、未读、30 分钟内的事件合并成一条
+  items     String[]             @default([]) // 合并进来的明细（更新了哪些资料 / 录入了哪些线索）
+  changes   Json                 @default("[]") // 机构资料修改明细 ChangeLine[]，合并时追加
+  count     Int                  @default(1)
+  actorId   String?
+  actorName String               @default("")
   readAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @default(now()) @updatedAt
 
   @@index([userId, readAt])
+  @@index([userId, updatedAt])
+  @@index([userId, groupKey])
 }
 
 /// ---------------- 操作日志 ----------------

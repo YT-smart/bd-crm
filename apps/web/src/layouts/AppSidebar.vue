@@ -3,9 +3,10 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NPopover, NTooltip, useDialog } from 'naive-ui';
 import { ChevronsUpDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun } from 'lucide-vue-next';
-import { ROLE_LABEL } from '@bdcrm/shared';
+import { NOTIFICATION_CATEGORY_PERM, ROLE_LABEL } from '@bdcrm/shared';
 import LogoMark from '@/components/LogoMark.vue';
 import UserAvatar from '@/components/UserAvatar.vue';
+import NotificationBell from '@/components/NotificationBell.vue';
 import { useAppStore, type ThemeMode } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { NAV_ITEMS } from './nav';
@@ -18,6 +19,8 @@ const dialog = useDialog();
 
 const items = computed(() => NAV_ITEMS.filter((i) => auth.can(i.perm)));
 const collapsed = computed(() => app.sidebarCollapsed);
+/** 能收到任意一类消息提醒的账号才显示入口（员工、管理员；机构账号没有） */
+const showNotify = computed(() => auth.can(Object.values(NOTIFICATION_CATEGORY_PERM)));
 
 function isActive(to: string) {
   return route.path === to || route.path.startsWith(`${to}/`);
@@ -74,6 +77,8 @@ function confirmLogout() {
         <component :is="collapsed ? PanelLeftOpen : PanelLeftClose" :size="16" :stroke-width="1.75" />
         <span v-show="!collapsed">收起</span>
       </button>
+
+      <NotificationBell v-if="showNotify" :collapsed="collapsed" />
 
       <NPopover trigger="click" placement="top-start" :show-arrow="false" raw class="user-pop-wrap">
         <template #trigger>

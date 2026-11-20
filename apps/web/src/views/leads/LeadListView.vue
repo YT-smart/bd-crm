@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   NDataTable, NDatePicker, NInput, NModal, NSelect, useDialog, useMessage,
   type DataTableColumns, type DataTableRowKey,
@@ -314,6 +315,20 @@ onMounted(() => {
   load();
   loadFilterOptions();
 });
+
+/** 消息提醒跳转过来时带 ?lead=ID，直接打开该线索详情 */
+const route = useRoute();
+const router = useRouter();
+watch(
+  () => route.query.lead,
+  (id) => {
+    if (typeof id !== 'string' || !id) return;
+    drawerId.value = id;
+    showDrawer.value = true;
+    router.replace({ query: { ...route.query, lead: undefined } });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

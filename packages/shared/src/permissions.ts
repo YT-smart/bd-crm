@@ -66,6 +66,16 @@ export const ROLE_PERMS: Record<Role, readonly Perm[]> = {
   ORG: [PERM.DASHBOARD_ORG, PERM.MY_ORG, PERM.DEAL_VIEW, PERM.DEAL_CREATE, PERM.DEAL_EXPORT],
 };
 
+/**
+ * 消息提醒各分类的接收权限：机构资料修改员工和管理员都收；线索、成交只推给管理员。
+ * 机构账号没有这些权限，收不到提醒。
+ */
+export const NOTIFICATION_CATEGORY_PERM = {
+  ORG: PERM.ORG_VIEW,
+  LEAD: PERM.LEAD_MANAGE,
+  DEAL: PERM.DEAL_VIEW_ALL,
+} as const satisfies Record<'ORG' | 'LEAD' | 'DEAL', Perm>;
+
 export function permsOf(role: Role): Perm[] {
   return [...ROLE_PERMS[role]];
 }

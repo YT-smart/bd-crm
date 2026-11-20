@@ -23,6 +23,8 @@ import { createShareToken } from '../lib/share';
 import { canThumb, getThumbnail } from '../lib/thumbnail';
 import { fmtDay } from '../lib/date';
 import { writeAudit } from '../services/audit.service';
+import { prisma } from '../lib/prisma';
+import { attachmentCategoryLabel, contactSummary, diffContact, diffOrg, diffProduct, productSummary } from '../lib/org-changes';
 import {
   listOrgs,
   getOrgDetail,
@@ -270,8 +272,10 @@ router.put('/:id', requirePerm(...CAN_EDIT), async (req, res) => {
   if (input.cooperateAt) data.cooperateAt = new Date(input.cooperateAt);
   if (input.website === '') data.website = null;
 
+  const before = await prisma.org.findUnique({ where: { id: orgId } });
   const updated = await updateOrg(orgId, data);
-  writeAudit(req, { module: 'org', action: 'update', targetId: orgId, targetName: updated.name });
+  const changes = before ? diffOrg(before as unknown as Record<string, unknown>, data) : undefined;
+  writeAudit(req, { module: 'org', action: 'update', targetId: orgId, targetName: updated.name, changes });
   ok(res, { id: orgId });
 });
 
@@ -298,18 +302,29 @@ router.post('/:id/contacts', requirePerm(...CAN_EDIT), async (req, res) => {
   const orgId = req.params.id;
   const input = contactSchema.parse(req.body);
   const contact = await addContact(orgId, input);
-  writeAudit(req, { module: 'org', action: 'addContact', targetId: orgId, after: input });
+  writeAudit(req, {
+    module: 'org', action: 'addContact', targetId: orgId, after: input,
+    changes: [{ label: '新增联系人', after: contactSummary(input) }],
+  });
   ok(res, { id: contact.id }, 201);
 });
 
 router.put('/:id/contacts/:contactId', requirePerm(...CAN_EDIT), async (req, res) => {
   const input = contactSchema.partial().parse(req.body);
+  const before = await prisma.orgContact.findFirst({ where: { id: req.params.contactId, orgId: req.params.id } });
   await updateContact(req.params.id, req.params.contactId, input);
+  const changes = before ? diffContact(before, input) : [];
+  writeAudit(req, { module: 'org', action: 'updateContact', targetId: req.params.id, targetName: before?.name, after: input, changes });
   ok(res, null);
 });
 
 router.delete('/:id/contacts/:contactId', requirePerm(...CAN_EDIT), async (req, res) => {
+  const before = await prisma.orgContact.findFirst({ where: { id: req.params.contactId, orgId: req.params.id } });
   await deleteContact(req.params.id, req.params.contactId);
+  writeAudit(req, {
+    module: 'org', action: 'deleteContact', targetId: req.params.id, targetName: before?.name,
+    changes: before ? [{ label: '删除联系人', before: contactSummary(before) }] : [],
+  });
   ok(res, null);
 });
 
@@ -334,20 +349,33 @@ router.post('/:id/products', requirePerm(...CAN_EDIT), async (req, res) => {
   const input = productSchema.parse(req.body);
   checkPriceRange(input);
   const product = await addProduct(orgId, input);
-  writeAudit(req, { module: 'org', action: 'addProduct', targetId: orgId, after: input });
+  writeAudit(req, {
+    module: 'org', action: 'addProduct', targetId: orgId, after: input,
+    changes: [
+      { label: '新增产品', after: productSummary(input) },
+      ...(input.rate != null ? [{ label: `产品「${input.name}」· 佣金比例`, after: `${input.rate}%`, sensitive: true }] : []),
+    ],
+  });
   ok(res, { id: product.id }, 201);
 });
 
 router.put('/:id/products/:productId', requirePerm(...CAN_EDIT), async (req, res) => {
   const input = productSchema.partial().parse(req.body);
   checkPriceRange(input);
+  const before = await prisma.orgProduct.findFirst({ where: { id: req.params.productId, orgId: req.params.id } });
   await updateProduct(req.params.id, req.params.productId, input);
-  writeAudit(req, { module: 'org', action: 'updateProduct', targetId: req.params.id, after: input });
+  const changes = before ? diffProduct(before, input) : [];
+  writeAudit(req, { module: 'org', action: 'updateProduct', targetId: req.params.id, targetName: before?.name, after: input, changes });
   ok(res, null);
 });
 
 router.delete('/:id/products/:productId', requirePerm(...CAN_EDIT), async (req, res) => {
+  const before = await prisma.orgProduct.findFirst({ where: { id: req.params.productId, orgId: req.params.id } });
   await deleteProduct(req.params.id, req.params.productId);
+  writeAudit(req, {
+    module: 'org', action: 'deleteProduct', targetId: req.params.id, targetName: before?.name,
+    changes: before ? [{ label: '删除产品', before: productSummary(before) }] : [],
+  });
   ok(res, null);
 });
 
@@ -440,6 +468,7 @@ router.post(
         action: 'uploadAttachment',
         targetId: orgId,
         after: { category, files: items.map((i) => i.name) },
+        changes: [{ label: `上传附件 · ${attachmentCategoryLabel(category)}`, after: items.map((i) => i.name).join('、') }],
       });
       ok(res, items, 201);
     } catch (e) {
@@ -498,7 +527,10 @@ router.delete('/:id/attachments/:attId', requirePerm(...CAN_EDIT), async (req, r
     throw Errors.forbidden('只能删除自己上传的附件');
   }
   await deleteAttachment(req.params.attId);
-  writeAudit(req, { module: 'org', action: 'deleteAttachment', targetId: req.params.id, targetName: a.name });
+  writeAudit(req, {
+    module: 'org', action: 'deleteAttachment', targetId: req.params.id, targetName: a.name,
+    changes: [{ label: `删除附件 · ${attachmentCategoryLabel(a.category)}`, before: a.name }],
+  });
   ok(res, null);
 });
 
@@ -521,13 +553,13 @@ router.post('/:id/wechat-qr', requirePerm(...CAN_EDIT), orgImageUploader().singl
     await removeStoredFile(toStorageKey(f.path));
     throw e;
   }
-  writeAudit(req, { module: 'org', action: 'update', targetId: String(req.params.id), targetName: '上传公众号二维码' });
+  writeAudit(req, { module: 'org', action: 'update', targetId: String(req.params.id), targetName: '上传公众号二维码', changes: [{ label: '公众号二维码', after: '上传了新图片' }] });
   ok(res, null, 201);
 });
 
 router.delete('/:id/wechat-qr', requirePerm(...CAN_EDIT), async (req, res) => {
   await setWechatQr(req.params.id, null);
-  writeAudit(req, { module: 'org', action: 'update', targetId: req.params.id, targetName: '删除公众号二维码' });
+  writeAudit(req, { module: 'org', action: 'update', targetId: req.params.id, targetName: '删除公众号二维码', changes: [{ label: '公众号二维码', before: '原图片', after: '已删除' }] });
   ok(res, null);
 });
 

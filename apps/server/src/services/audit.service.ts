@@ -1,6 +1,8 @@
 import type { Request } from 'express';
 import { Prisma } from '@prisma/client';
+import type { ChangeLine } from '@bdcrm/shared';
 import { prisma } from '../lib/prisma';
+import { notifyFromAudit } from './notification.service';
 
 export interface AuditInput {
   module: string;
@@ -9,6 +11,8 @@ export interface AuditInput {
   targetName?: string | null;
   before?: unknown;
   after?: unknown;
+  /** 给人看的修改明细（机构资料），用于消息提醒 */
+  changes?: ChangeLine[];
   /** 未登录场景（如登录失败）手动指定操作人 */
   actor?: { id?: string | null; name: string; role?: 'ADMIN' | 'STAFF' | 'ORG' | null };
 }
@@ -40,5 +44,11 @@ export async function writeAudit(req: Request, input: AuditInput) {
     });
   } catch (e) {
     console.error('[audit] 写入失败', e);
+  }
+  // 事件通知中心：从业务事件生成消息提醒，失败不影响主流程
+  try {
+    await notifyFromAudit(req.user, input);
+  } catch (e) {
+    console.error('[notify] 生成提醒失败', e);
   }
 }

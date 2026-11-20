@@ -40,6 +40,9 @@ import type {
   LeadListQuery,
   LeadSignInput,
   LeadStatusCounts,
+  NotificationCategory,
+  NotificationListResult,
+  NotificationUnread,
 } from '@bdcrm/shared';
 import { http } from './http';
 
@@ -255,3 +258,11 @@ export const userApi = {
   remove: (id: string) => http.del<null>(`/users/${id}`),
 };
 
+
+export const notificationApi = {
+  unreadCount: () => http.get<NotificationUnread>('/notifications/unread-count'),
+  list: (q: { category?: NotificationCategory; unreadOnly?: boolean; page?: number; pageSize?: number }) =>
+    http.get<NotificationListResult>('/notifications', { ...q }),
+  read: (id: string) => http.post<null>(`/notifications/${id}/read`),
+  readAll: (category?: NotificationCategory) => http.post<{ updated: number }>('/notifications/read-all', { category }),
+};
