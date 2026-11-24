@@ -468,6 +468,9 @@ export interface DealListItem {
   customProduct: string | null;
   /** 线索分类（员工录入） */
   leadCategory: string | null;
+  /** 签约顾问（员工账号） */
+  advisorId: string | null;
+  advisorName: string | null;
   studentName: string;
   studentPhone: string | null;
   dealAt: string;
@@ -503,6 +506,8 @@ export interface DealListQuery {
   creatorType?: 'ORG' | 'STAFF';
   /** 指定录入人（仅管理员可用） */
   creatorId?: string;
+  /** 签约顾问（仅管理员可用） */
+  advisorId?: string;
 }
 
 export interface DealCreateInput {
@@ -510,6 +515,7 @@ export interface DealCreateInput {
   productId?: string | null;
   customProduct?: string | null;
   leadCategory?: string | null;
+  advisorId?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -525,6 +531,7 @@ export interface DealUpdateInput {
   productId?: string | null;
   customProduct?: string | null;
   leadCategory?: string | null;
+  advisorId?: string | null;
   studentName?: string;
   studentPhone?: string | null;
   dealAt?: string;

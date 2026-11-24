@@ -16,6 +16,7 @@ import {
   revokeSettle,
   listOrgOptions,
   exportDeals,
+  assertAdvisor,
   type DealScope,
 } from '../services/deal.service';
 import type { Request } from 'express';
@@ -64,6 +65,8 @@ const querySchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
   creatorType: z.enum(['ORG', 'STAFF']).optional(),
   creatorId: z.string().cuid().optional(),
+  /** 签约顾问（仅管理员可用） */
+  advisorId: z.string().cuid().optional(),
 });
 
 /** 解析查询条件；按录入方 / 录入人筛选只给能看全部成交的管理员 */
@@ -72,6 +75,7 @@ function parseQuery(req: Request) {
   if (!req.user!.permissions.includes(PERM.DEAL_VIEW_ALL)) {
     delete q.creatorType;
     delete q.creatorId;
+    delete q.advisorId;
   }
   return q;
 }
@@ -85,6 +89,7 @@ router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
     studentName: d.studentName,
     productName: d.product?.name ?? d.customProduct ?? '',
     leadCategory: d.leadCategory ?? '',
+    advisor: d.advisor?.name ?? '',
     dealAt: fmtDay(d.dealAt),
     amount: Number(d.amount),
     rate: Number(d.rate),
@@ -113,6 +118,8 @@ const createSchema = z.object({
   /** 产品选「其他」时手填 */
   customProduct: z.string().trim().max(50).nullish(),
   leadCategory: z.string().trim().max(30).nullish(),
+  /** 签约顾问：员工账号 */
+  advisorId: z.string().cuid().nullish(),
   studentName: z.string().trim().min(1, '学生姓名不能为空').max(50),
   studentPhone: z.string().max(20).nullish(),
   dealAt: z.string().datetime({ message: '成交日期格式有误' }),
@@ -126,8 +133,15 @@ router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const input = createSchema.parse(req.body);
   if (!input.productId && !input.customProduct) throw Errors.badRequest('请选择产品');
   // 线索分类：员工（含管理员）录入必填，机构录入不填
-  if (req.user!.role === 'ORG') input.leadCategory = null;
-  else if (!input.leadCategory) throw Errors.badRequest('请选择线索分类');
+  if (req.user!.role === 'ORG') {
+    input.leadCategory = null;
+    input.advisorId = null;
+  } else {
+    if (!input.leadCategory) throw Errors.badRequest('请选择线索分类');
+    // 签约顾问：员工录入必填
+    if (!input.advisorId) throw Errors.badRequest('请选择签约顾问');
+    await assertAdvisor(input.advisorId);
+  }
 
   // 机构角色只能为自己的机构录入
   if (req.user!.role === 'ORG' && input.orgId !== req.user!.orgId) {
@@ -154,6 +168,8 @@ const updateSchema = z.object({
   productId: z.string().cuid().nullish(),
   customProduct: z.string().trim().max(50).nullish(),
   leadCategory: z.string().trim().max(30).nullish(),
+  /** 签约顾问：员工账号 */
+  advisorId: z.string().cuid().nullish(),
   studentName: z.string().trim().min(1).max(50).optional(),
   studentPhone: z.string().max(20).nullish(),
   dealAt: z.string().datetime().optional(),
@@ -166,7 +182,12 @@ const updateSchema = z.object({
 router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const input = updateSchema.parse(req.body);
   const u = req.user!;
-  if (u.role === 'ORG') delete input.leadCategory;
+  if (u.role === 'ORG') {
+    delete input.leadCategory;
+    delete input.advisorId;
+  } else if (input.advisorId) {
+    await assertAdvisor(input.advisorId);
+  }
   await updateDeal(req.params.id, input, {
     // 机构只能改本机构的；员工只能改自己录入的
     orgId: u.role === 'ORG' ? u.orgId! : undefined,

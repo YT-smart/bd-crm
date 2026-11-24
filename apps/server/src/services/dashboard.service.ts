@@ -319,10 +319,10 @@ export async function getLists(source?: DealSource): Promise<DashboardLists> {
 /** 超过这么多天没跟进的线索算「待跟进」 */
 const LEAD_STALE_DAYS = 7;
 
-/** userId 取自登录态：只统计本人录入的成交、本人录入或分给本人的线索 */
+/** userId 取自登录态：只统计本人录入或本人签约（签约顾问）的成交、本人录入或分给本人的线索 */
 export async function getStaffDashboard(userId: string, range: DashboardRange): Promise<StaffDashboard> {
   const r = resolveRange(range);
-  const mine = { createdById: userId };
+  const mine: Prisma.DealWhereInput = { OR: [{ createdById: userId }, { advisorId: userId }] };
   const approved = { ...mine, status: { in: APPROVED } };
   const dealAgg = (from: Date, to: Date) =>
     prisma.deal.aggregate({
@@ -348,7 +348,7 @@ export async function getStaffDashboard(userId: string, range: DashboardRange): 
                COALESCE(SUM(amount), 0)::float8 AS amount,
                COALESCE(SUM(commission), 0)::float8 AS commission
         FROM "Deal"
-        WHERE status IN ${APPROVED_SQL} AND "createdById" = ${userId} AND "dealAt" >= ${from}
+        WHERE status IN ${APPROVED_SQL} AND ("createdById" = ${userId} OR "advisorId" = ${userId}) AND "dealAt" >= ${from}
         GROUP BY 1`,
       prisma.$queryRaw<{ id: string; name: string; deal_count: number; amount: number; commission: number }[]>`
         SELECT o.id, o.name,
@@ -357,7 +357,7 @@ export async function getStaffDashboard(userId: string, range: DashboardRange): 
                COALESCE(SUM(d.commission), 0)::float8 AS commission
         FROM "Deal" d
         JOIN "Org" o ON o.id = d."orgId"
-        WHERE d.status IN ${APPROVED_SQL} AND d."createdById" = ${userId}
+        WHERE d.status IN ${APPROVED_SQL} AND (d."createdById" = ${userId} OR d."advisorId" = ${userId})
           AND d."dealAt" >= ${r.start} AND o."deletedAt" IS NULL
         GROUP BY o.id, o.name
         ORDER BY commission DESC

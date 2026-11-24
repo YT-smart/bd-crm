@@ -80,6 +80,8 @@ const filters = reactive({
   creatorType: (['ORG', 'STAFF'].includes(route.query.creator as string) ? route.query.creator : null) as 'ORG' | 'STAFF' | null,
   /** 指定录入的员工（仅管理员） */
   creatorId: null as string | null,
+  /** 签约顾问（仅管理员） */
+  advisorId: null as string | null,
   page: 1,
 });
 
@@ -113,6 +115,7 @@ function query(): DealListQuery {
     order: sort.value?.order,
     creatorType: filters.creatorType ?? undefined,
     creatorId: filters.creatorId ?? undefined,
+    advisorId: filters.advisorId ?? undefined,
   };
 }
 
@@ -169,6 +172,11 @@ function loadStaff() {
   if (staffOptions.value.length || !canFilterCreator.value) return;
   orgApi.staffOptions().then((list) => (staffOptions.value = list.map((u) => ({ label: u.name, value: u.id })))).catch(() => {});
 }
+/** 签约顾问：「不限」按钮 + 员工下拉 */
+const advisorRow = computed({
+  get: () => (filters.advisorId ? [filters.advisorId] : []),
+  set: (v: string[]) => { filters.advisorId = v[0] ?? null; },
+});
 /** 选了具体员工就自动归到「员工录入」 */
 function onPickCreator(id: string | null) {
   filters.creatorId = id;
@@ -221,7 +229,7 @@ async function reload() { await Promise.all([load(), loadSummary()]); }
 
 const debouncedKeyword = useDebounceFn(() => { filters.page = 1; reload(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
-watch(() => [filters.status, filters.datePreset, filters.dateRange, filters.creatorType, filters.creatorId], () => {
+watch(() => [filters.status, filters.datePreset, filters.dateRange, filters.creatorType, filters.creatorId, filters.advisorId], () => {
   filters.page = 1;
   checkedKeys.value = [];
   reload();
@@ -232,7 +240,7 @@ watch(() => [filters.dateRange, filters.datePreset], () => {
 });
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, creatorType: null, creatorId: null, page: 1 });
+  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, creatorType: null, creatorId: null, advisorId: null, page: 1 });
   sort.value = null;
   checkedKeys.value = [];
 }
@@ -382,9 +390,12 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
       }, r.orgName),
     },
     { title: '产品', key: 'productName', width: 140, ellipsis: { tooltip: true }, render: (r) => r.productName ?? '--' },
-    // 线索分类只有员工录入才有，机构账号不显示
+    // 签约顾问、线索分类只有员工录入才有，机构账号不显示
     ...(auth.user?.role !== 'ORG'
-      ? [{ title: '线索分类', key: 'leadCategory', width: 110, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.leadCategory ?? '--' }]
+      ? [
+          { title: '签约顾问', key: 'advisorName', width: 100, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.advisorName ?? '--' },
+          { title: '线索分类', key: 'leadCategory', width: 110, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.leadCategory ?? '--' },
+        ]
       : []),
     {
       title: '成交日期', key: 'dealAt', width: 110, sorter: true,
@@ -455,7 +466,7 @@ const pagination = computed(() => ({
 }));
 
 const hasFilter = computed(
-  () => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || filters.creatorType || filters.creatorId || sort.value),
+  () => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || filters.creatorType || filters.creatorId || filters.advisorId || sort.value),
 );
 
 /* ---------- 初始化 ---------- */
@@ -519,6 +530,19 @@ onMounted(async () => {
           placeholder="选择员工"
           class="creator-sel"
           @update:value="onPickCreator"
+        />
+      </FilterRow>
+      <FilterRow v-if="canFilterCreator" v-model="advisorRow" label="签约顾问" :options="[]" single>
+        <NSelect
+          id="deal-advisor"
+          :value="filters.advisorId"
+          :options="staffOptions"
+          filterable
+          clearable
+          size="small"
+          placeholder="选择签约顾问"
+          class="creator-sel"
+          @update:value="(v: string | null) => (filters.advisorId = v)"
         />
       </FilterRow>
       <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />

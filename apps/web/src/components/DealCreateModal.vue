@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { NDatePicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useMessage } from 'naive-ui';
 import { DEAL_LEAD_CATEGORIES, type DealListItem, type OrgOption } from '@bdcrm/shared';
-import { dealApi } from '@/api';
+import { dealApi, orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
@@ -32,6 +32,17 @@ async function loadOrgOptions() {
   }
 }
 
+/** 签约顾问：在职的员工 / 管理员账号 */
+const advisorOptions = ref<{ label: string; value: string }[]>([]);
+async function loadAdvisors() {
+  if (advisorOptions.value.length || auth.user?.role === 'ORG') return;
+  try {
+    advisorOptions.value = (await orgApi.staffOptions()).map((u) => ({ label: u.name, value: u.id }));
+  } catch {
+    /* 加载失败时下拉为空 */
+  }
+}
+
 /** 产品下拉里的「其他」：选中后手填产品名 */
 const OTHER = '__other__';
 
@@ -41,6 +52,7 @@ const form = reactive({
   customProduct: '',
   leadCategory: null as string | null,
   customCategory: '',
+  advisorId: null as string | null,
   studentName: '',
   studentPhone: '',
   dealAt: Date.now() as number | null,
@@ -99,7 +111,7 @@ watch(
 
 watch(show, async (open) => {
   if (!open) return;
-  await loadOrgOptions();
+  await Promise.all([loadOrgOptions(), loadAdvisors()]);
   const d = props.deal;
   if (d) {
     filling = true;
@@ -108,6 +120,7 @@ watch(show, async (open) => {
       productId: d.productId ?? (d.customProduct ? OTHER : null),
       customProduct: d.customProduct ?? '',
       ...splitCategory(d.leadCategory),
+      advisorId: d.advisorId,
       studentName: d.studentName,
       studentPhone: d.studentPhone ?? '',
       dealAt: new Date(d.dealAt).getTime(),
@@ -126,6 +139,8 @@ watch(show, async (open) => {
     customProduct: '',
     leadCategory: null,
     customCategory: '',
+    // 签约顾问默认是录入的员工自己
+    advisorId: advisorOptions.value.some((o) => o.value === auth.user?.id) ? auth.user!.id : null,
     studentName: '',
     studentPhone: '',
     dealAt: Date.now(),
@@ -141,6 +156,7 @@ async function submit() {
   if (!form.orgId) { message.warning('请选择机构'); return; }
   if (!form.productId) { message.warning('请选择产品'); return; }
   if (isOther.value && !form.customProduct.trim()) { message.warning('请填写产品名称'); return; }
+  if (needCategory.value && !form.advisorId) { message.warning('请选择签约顾问'); return; }
   if (needCategory.value && !form.leadCategory) { message.warning('请选择线索分类'); return; }
   if (needCategory.value && isOtherCategory.value && !form.customCategory.trim()) { message.warning('请填写线索分类'); return; }
   if (!form.studentName.trim()) { message.warning('请输入学生姓名'); return; }
@@ -151,7 +167,7 @@ async function submit() {
     productId: isOther.value ? null : form.productId,
     customProduct: isOther.value ? form.customProduct.trim() : null,
     ...(needCategory.value
-      ? { leadCategory: isOtherCategory.value ? form.customCategory.trim() : form.leadCategory }
+      ? { leadCategory: isOtherCategory.value ? form.customCategory.trim() : form.leadCategory, advisorId: form.advisorId }
       : {}),
     studentName: form.studentName.trim(),
     dealAt: new Date(form.dealAt).toISOString(),
@@ -207,6 +223,9 @@ async function submit() {
       </NFormItem>
       <NFormItem v-if="isOther" label="产品名称" required>
         <NInput v-model:value="form.customProduct" placeholder="填写产品名称" maxlength="50" />
+      </NFormItem>
+      <NFormItem v-if="needCategory" label="签约顾问" required>
+        <NSelect v-model:value="form.advisorId" :options="advisorOptions" filterable placeholder="选择签约顾问" />
       </NFormItem>
       <NFormItem v-if="needCategory" label="线索分类" required>
         <NSelect v-model:value="form.leadCategory" :options="categoryOptions" placeholder="选择线索来源分类" />

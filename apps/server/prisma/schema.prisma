@@ -67,6 +67,7 @@ model User {
   createdDeals  Deal[]         @relation("DealCreator")
   auditedDeals  Deal[]         @relation("DealAuditor")
   settledDeals  Deal[]         @relation("DealSettler")
+  advisedDeals  Deal[]         @relation("DealAdvisor")
   followUps     FollowUp[]
   orgReviews    OrgReview[]
   createdLeads  Lead[]         @relation("LeadCreator")
@@ -189,6 +190,8 @@ model Deal {
   productId    String?
   product      OrgProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
   customProduct String? // 产品选「其他」时手填的产品名
+  advisorId    String? // 签约顾问（员工账号；员工录入必填，机构录入不填）
+  advisor      User?      @relation("DealAdvisor", fields: [advisorId], references: [id], onDelete: SetNull)
   leadCategory String? // 线索分类（员工录入必填）：主账号 / 投流线索 / ... 或「其他」时手填
   studentName  String
   studentPhone String?
@@ -221,6 +224,7 @@ model Deal {
   @@index([status])
   @@index([dealAt])
   @@index([settledAt])
+  @@index([advisorId])
 }
 
 model Settlement {

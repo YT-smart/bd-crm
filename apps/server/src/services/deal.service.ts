@@ -33,7 +33,8 @@ export interface DealScope {
 
 export function scopeWhere(scope: DealScope = {}): Prisma.DealWhereInput {
   if (scope.orgId) return { orgId: scope.orgId };
-  if (scope.userId) return { createdById: scope.userId };
+  // 员工：自己录入的，或自己是签约顾问的
+  if (scope.userId) return { OR: [{ createdById: scope.userId }, { advisorId: scope.userId }] };
   return {};
 }
 
@@ -49,6 +50,7 @@ function buildDealWhere(q: DealListQuery, scope: DealScope = {}, withStatus = tr
   if (q.creatorType === 'ORG') where.createdBy = { role: 'ORG' };
   else if (q.creatorType === 'STAFF') where.createdBy = { role: { in: ['STAFF', 'ADMIN'] } };
   if (q.creatorId) where.createdById = q.creatorId;
+  if (q.advisorId) where.advisorId = q.advisorId;
   const range = dayRange(q.startDate, q.endDate);
   if (range) where.dealAt = range;
   if (q.keyword) {
@@ -84,6 +86,7 @@ export async function listDeals(
         org: { select: { name: true } },
         product: { select: { name: true } },
         createdBy: { select: { name: true, role: true } },
+        advisor: { select: { name: true } },
         auditedBy: { select: { name: true } },
         settledBy: { select: { name: true } },
       },
@@ -102,6 +105,8 @@ export async function listDeals(
       productName: d.product?.name ?? d.customProduct ?? null,
       customProduct: d.customProduct,
       leadCategory: d.leadCategory,
+      advisorId: d.advisorId,
+      advisorName: d.advisor?.name ?? null,
       studentName: d.studentName,
       studentPhone: d.studentPhone,
       dealAt: d.dealAt.toISOString(),
@@ -260,6 +265,7 @@ interface CreateDealInput {
   productId?: string | null;
   customProduct?: string | null;
   leadCategory?: string | null;
+  advisorId?: string | null;
   studentName: string;
   studentPhone?: string | null;
   dealAt: string;
@@ -300,6 +306,7 @@ export async function createDeal(input: CreateDealInput) {
       productId: input.productId ?? null,
       customProduct: input.productId ? null : input.customProduct || null,
       leadCategory: input.leadCategory || null,
+      advisorId: input.advisorId || null,
       studentName: input.studentName,
       studentPhone: input.studentPhone ?? null,
       dealAt: new Date(input.dealAt),
@@ -323,6 +330,7 @@ export async function updateDeal(
     productId?: string | null;
     customProduct?: string | null;
     leadCategory?: string | null;
+    advisorId?: string | null;
     studentName?: string;
     studentPhone?: string | null;
     dealAt?: string;
@@ -375,6 +383,7 @@ export async function updateDeal(
   if (input.amount !== undefined) data.amount = input.amount;
   if (input.note !== undefined) data.note = input.note;
   if (input.leadCategory !== undefined) data.leadCategory = input.leadCategory || null;
+  if (input.advisorId !== undefined) data.advisorId = input.advisorId || null;
 
   if (scope.enforceAgreedRate) {
     // 机构、员工：比例与佣金始终按约定重新计算
@@ -508,6 +517,13 @@ export async function exportDeals(q: DealListQuery, scope: DealScope = {}) {
       org: { select: { name: true } },
       product: { select: { name: true } },
       createdBy: { select: { name: true } },
+      advisor: { select: { name: true } },
     },
   });
+}
+
+/** 签约顾问必须是在职的员工 / 管理员账号 */
+export async function assertAdvisor(advisorId: string) {
+  const u = await prisma.user.findFirst({ where: { id: advisorId, role: { in: ['ADMIN', 'STAFF'] }, isActive: true }, select: { id: true } });
+  if (!u) throw new AppError(400, '签约顾问不存在或已停用');
 }

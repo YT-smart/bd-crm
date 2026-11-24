@@ -346,6 +346,8 @@ export async function signLead(id: string, input: LeadSignInput, userId: string,
     commission: input.commission,
     note: input.note ?? null,
     createdById: userId,
+    // 从线索登记签约：签约顾问默认是登记的人
+    advisorId: userId,
     // 员工按合作约定比例计算佣金；管理员可以自定
     enforceAgreedRate: !!scope.userId,
   });
