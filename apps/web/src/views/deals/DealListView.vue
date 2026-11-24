@@ -172,7 +172,8 @@ function loadStaff() {
   if (staffOptions.value.length || !canFilterCreator.value) return;
   orgApi.staffOptions().then((list) => (staffOptions.value = list.map((u) => ({ label: u.name, value: u.id })))).catch(() => {});
 }
-/** 签约顾问：「不限」按钮 + 员工下拉 */
+/** 签约顾问：员工名字横排成按钮，单选 */
+const advisorFilterOptions = computed<FilterOption[]>(() => staffOptions.value.map((o) => ({ label: o.label, value: o.value })));
 const advisorRow = computed({
   get: () => (filters.advisorId ? [filters.advisorId] : []),
   set: (v: string[]) => { filters.advisorId = v[0] ?? null; },
@@ -532,19 +533,7 @@ onMounted(async () => {
           @update:value="onPickCreator"
         />
       </FilterRow>
-      <FilterRow v-if="canFilterCreator" v-model="advisorRow" label="签约顾问" :options="[]" single>
-        <NSelect
-          id="deal-advisor"
-          :value="filters.advisorId"
-          :options="staffOptions"
-          filterable
-          clearable
-          size="small"
-          placeholder="选择签约顾问"
-          class="creator-sel"
-          @update:value="(v: string | null) => (filters.advisorId = v)"
-        />
-      </FilterRow>
+      <FilterRow v-if="canFilterCreator" v-model="advisorRow" label="签约顾问" :options="advisorFilterOptions" single />
       <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />
       <FilterRow v-model="dateRow" label="成交日期" :options="DATE_PRESETS" single>
         <NDatePicker
