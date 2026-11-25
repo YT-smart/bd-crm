@@ -235,7 +235,7 @@ const ORG_EDITABLE = new Set([
 
 /** 基本信息必填：提交了这些字段就不能是空的（合作信息等其他卡片单独保存时不带这些字段） */
 const REQUIRED_BASIC: Record<string, string> = {
-  province: '所在省份', city: '总部城市', address: '详细地址', scale: '机构规模', website: '官网',
+  province: '所在省份', city: '总部城市', address: '详细地址', foundedAt: '成立年份', scale: '机构规模', website: '官网',
   wechat: '公众号', businessTypes: '业务类型', countries: '覆盖国家和地区', officeCities: '校区城市',
   advantage: '机构一句话优势', intro: '机构简介',
 };

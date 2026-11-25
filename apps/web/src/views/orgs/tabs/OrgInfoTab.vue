@@ -182,6 +182,7 @@ function missingFields(): string[] {
   if (!form.province) miss.push('所在省份');
   if (!form.city) miss.push('总部城市');
   if (blank(form.address)) miss.push('详细地址');
+  if (form.foundedYear == null) miss.push('成立年份');
   if (blank(form.scale)) miss.push('机构规模');
   if (!form.cooperateAt) miss.push('合作时间');
   if (canEditRate.value && form.defaultRate == null) miss.push('默认佣金');
@@ -267,11 +268,10 @@ async function save() {
         <NFormItem label="机构规模" required>
           <NInput v-model:value="form.scale" placeholder="如: 50-100人" maxlength="50" />
         </NFormItem>
-        <NFormItem label="成立年份">
+        <NFormItem label="成立年份" required>
           <NSelect
             v-model:value="form.foundedYear"
             :options="foundedYearOptions"
-            clearable
             filterable
             placeholder="选择成立年份，可输入搜索"
           />
