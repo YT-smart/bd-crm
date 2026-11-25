@@ -31,6 +31,10 @@ const emit = defineEmits<{ edit: [] }>();
         </span>
       </div>
       <div class="kv-row">
+        <span class="kv-label">成立年份</span>
+        <span class="kv-value num">{{ org.foundedAt ? `${new Date(org.foundedAt).getUTCFullYear()} 年` : '--' }}</span>
+      </div>
+      <div class="kv-row">
         <span class="kv-label">总部城市</span>
         <span class="kv-value"><CopyText :value="org.city" label="总部城市" /></span>
       </div>

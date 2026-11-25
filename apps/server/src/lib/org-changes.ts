@@ -12,6 +12,12 @@ const EMPTY = null;
 const text: Fmt = (v) => (v == null || v === '' ? EMPTY : String(v).trim() || EMPTY);
 const list: Fmt = (v) => (Array.isArray(v) && v.length ? v.join('、') : EMPTY);
 const day: Fmt = (v) => (v ? fmtDay(v instanceof Date ? v : new Date(String(v))) || EMPTY : EMPTY);
+/** 成立年份：存的是当年 1 月 1 日（UTC），只显示年 */
+const year: Fmt = (v) => {
+  if (!v) return EMPTY;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? EMPTY : `${d.getUTCFullYear()} 年`;
+};
 const pct: Fmt = (v) => (v == null || v === '' ? EMPTY : `${Number(v)}%`);
 const yuan: Fmt = (v) => (v == null || v === '' ? EMPTY : `¥${Number(v).toLocaleString('zh-CN')}`);
 const bank: Fmt = (v) => {
@@ -33,7 +39,7 @@ const ORG_FIELDS: Record<string, { label: string; fmt: Fmt; sensitive?: boolean 
   address: { label: '详细地址', fmt: text },
   website: { label: '官网', fmt: text },
   wechat: { label: '公众号', fmt: text },
-  foundedAt: { label: '成立时间', fmt: day },
+  foundedAt: { label: '成立年份', fmt: year },
   scale: { label: '机构规模', fmt: text },
   businessTypes: { label: '业务类型', fmt: list },
   countries: { label: '覆盖国家和地区', fmt: list },

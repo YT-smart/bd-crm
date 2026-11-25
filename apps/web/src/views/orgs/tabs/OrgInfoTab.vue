@@ -35,6 +35,8 @@ const form = reactive({
   website: '',
   wechat: '',
   scale: '',
+  /** 成立年份，如 2016 */
+  foundedYear: null as number | null,
   businessTypes: [] as string[],
   countries: [] as string[],
   officeCities: [] as string[],
@@ -52,6 +54,19 @@ const customType = ref('');
 /** resetForm 期间不触发总部城市联动 */
 let resetting = false;
 
+/** 成立年份：后端存当年 1 月 1 日（UTC），这里只用年 */
+function isoToYear(iso: string | null): number | null {
+  return iso ? new Date(iso).getUTCFullYear() : null;
+}
+function yearToIso(year: number | null): string {
+  return year == null ? '' : `${year}-01-01T00:00:00.000Z`;
+}
+/** 成立年份下拉：今年往前到 1950 年，新的在上面 */
+const foundedYearOptions = Array.from({ length: new Date().getFullYear() - 1949 }, (_, i) => {
+  const y = new Date().getFullYear() - i;
+  return { label: `${y} 年`, value: y };
+});
+
 function resetForm() {
   resetting = true;
   form.name = props.org.name;
@@ -63,6 +78,7 @@ function resetForm() {
   form.website = props.org.website ?? '';
   form.wechat = props.org.wechat ?? '';
   form.scale = props.org.scale ?? '';
+  form.foundedYear = isoToYear(props.org.foundedAt);
   form.businessTypes = [...props.org.businessTypes];
   customType.value = '';
   form.countries = [...props.org.countries];
@@ -145,6 +161,7 @@ const isDirty = computed(() => {
     form.website !== (o.website ?? '') ||
     form.wechat !== (o.wechat ?? '') ||
     form.scale !== (o.scale ?? '') ||
+    form.foundedYear !== isoToYear(o.foundedAt) ||
     form.level !== o.level ||
     form.cooperateAt !== new Date(o.cooperateAt).getTime() ||
     (canEditRate.value && (form.defaultRate ?? 0) !== o.defaultRate) ||
@@ -204,6 +221,7 @@ async function save() {
       website: form.website.trim(),
       wechat: form.wechat.trim(),
       scale: form.scale.trim(),
+      foundedAt: yearToIso(form.foundedYear),
       businessTypes: finalBusinessTypes(),
       countries: form.countries,
       officeCities: form.officeCities,
@@ -248,6 +266,15 @@ async function save() {
         </NFormItem>
         <NFormItem label="机构规模" required>
           <NInput v-model:value="form.scale" placeholder="如: 50-100人" maxlength="50" />
+        </NFormItem>
+        <NFormItem label="成立年份">
+          <NSelect
+            v-model:value="form.foundedYear"
+            :options="foundedYearOptions"
+            clearable
+            filterable
+            placeholder="选择成立年份，可输入搜索"
+          />
         </NFormItem>
         <NFormItem label="合作时间" required>
           <NDatePicker v-model:value="form.cooperateAt" type="date" :is-date-disabled="(t: number) => t > Date.now()" style="width: 100%" />
