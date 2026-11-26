@@ -115,6 +115,8 @@ model Org {
   businessTypes String[] // 留学申请 / 语言培训 / 背景提升 ...
   countries     String[] // 覆盖国家
   officeCities  String[]
+  /// 各校区详细地址，与 officeCities 对应：[{ city, address }]；address 字段保留为总部（或第一个）校区的地址
+  campusAddresses Json @default("[]")
   tags          String[]
   level         String? // A / B / C
   status        OrgStatus   @default(ACTIVE)

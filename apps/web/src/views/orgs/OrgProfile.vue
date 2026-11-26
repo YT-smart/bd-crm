@@ -78,7 +78,7 @@ defineExpose({ openEdit });
         :can-edit="canEdit"
         :website="org.website"
         :wechat="org.wechat"
-        :address="org.address"
+        :campus-addresses="org.campusAddresses"
         :has-wechat-qr="org.hasWechatQr"
         @refresh="emit('refresh')"
       />

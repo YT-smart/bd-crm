@@ -304,6 +304,12 @@ export interface OrgAttachmentItem {
   createdAt: string;
 }
 
+/** 校区地址：一个校区城市对应一条详细地址 */
+export interface CampusAddress {
+  city: string;
+  address: string;
+}
+
 export interface OrgDetail {
   id: string;
   name: string;
@@ -322,6 +328,8 @@ export interface OrgDetail {
   businessTypes: string[];
   countries: string[];
   officeCities: string[];
+  /** 各校区详细地址，顺序同 officeCities */
+  campusAddresses: CampusAddress[];
   tags: string[];
   level: string | null;
   status: OrgStatus;
@@ -396,6 +404,7 @@ export interface OrgUpdateInput {
   businessTypes?: string[];
   countries?: string[];
   officeCities?: string[];
+  campusAddresses?: CampusAddress[];
   tags?: string[];
   level?: string | null;
   status?: OrgStatus;

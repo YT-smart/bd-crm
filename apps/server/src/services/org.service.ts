@@ -9,6 +9,7 @@ import {
   type OrgListItem,
   type OrgListQuery,
   type OrgDetail,
+  type CampusAddress,
   type OrgStats,
   type OrgContactItem,
   type OrgProductItem,
@@ -294,6 +295,7 @@ export async function getOrgDetail(orgId: string): Promise<OrgDetail> {
     businessTypes: org.businessTypes,
     countries: org.countries,
     officeCities: org.officeCities,
+    campusAddresses: campusAddressesOf(org),
     tags: org.tags,
     level: org.level,
     status: org.status,
@@ -381,7 +383,7 @@ export async function createOrg(input: CreateOrgInput) {
 
 /* ---------- 更新机构 ---------- */
 
-export async function updateOrg(orgId: string, input: Partial<Prisma.OrgUncheckedUpdateInput & { tags: string[]; businessTypes: string[]; countries: string[]; officeCities: string[] }>) {
+export async function updateOrg(orgId: string, input: Partial<Prisma.OrgUncheckedUpdateInput & { tags: string[]; businessTypes: string[]; countries: string[]; officeCities: string[]; campusAddresses: CampusAddress[] }>) {
   const org = await prisma.org.findFirst({ where: { id: orgId, deletedAt: null } });
   if (!org) throw new AppError(404, '机构不存在');
 
@@ -400,6 +402,20 @@ export async function updateOrg(orgId: string, input: Partial<Prisma.OrgUnchecke
   if (input.city !== undefined || input.officeCities !== undefined) {
     const offices = input.officeCities ?? org.officeCities;
     input.officeCities = city && !offices.includes(city) ? [city, ...offices] : offices;
+  }
+
+  // 校区地址跟着校区城市走：每个校区一条，去掉已不是校区的城市；address 存总部（或第一个）校区的地址
+  if (input.campusAddresses !== undefined || input.officeCities !== undefined) {
+    const offices = (input.officeCities ?? org.officeCities) as string[];
+    const given = (input.campusAddresses ?? campusAddressesOf(org)) as CampusAddress[];
+    const byCity = new Map(given.map((c) => [c.city, c.address.trim()]));
+    if (input.campusAddresses !== undefined) {
+      const miss = offices.filter((c) => !byCity.get(c));
+      if (miss.length) throw new AppError(400, `请填写校区地址：${miss.join('、')}`);
+    }
+    const list = offices.filter((c) => byCity.get(c)).map((c) => ({ city: c, address: byCity.get(c)! }));
+    input.campusAddresses = list;
+    input.address = (list.find((c) => c.city === city) ?? list[0])?.address ?? null;
   }
 
   const updated = await prisma.org.update({ where: { id: orgId }, data: input });
@@ -657,6 +673,16 @@ export async function exportOrgs(q: OrgListQuery) {
 }
 
 /* ---------- 工具函数 ---------- */
+
+/** 校区地址；老数据只有一个 address 时，当作总部（或第一个）校区的地址 */
+export function campusAddressesOf(org: { campusAddresses: unknown; address: string | null; city: string | null; officeCities: string[] }): CampusAddress[] {
+  const list = Array.isArray(org.campusAddresses)
+    ? (org.campusAddresses as CampusAddress[]).filter((c) => c && c.city && c.address)
+    : [];
+  if (list.length) return list;
+  const city = org.city ?? org.officeCities[0];
+  return org.address?.trim() && city ? [{ city, address: org.address.trim() }] : [];
+}
 
 async function ensureOrg(orgId: string) {
   const org = await prisma.org.findFirst({ where: { id: orgId, deletedAt: null } });

@@ -26,6 +26,10 @@ const bank: Fmt = (v) => {
   const parts = [b.bankName, b.accountName, b.accountNo, b.note].filter((x) => x && String(x).trim());
   return parts.length ? parts.join(' · ') : EMPTY;
 };
+const campus: Fmt = (v) =>
+  Array.isArray(v) && v.length
+    ? (v as { city: string; address: string }[]).map((c) => `${c.city}：${c.address}`).join('；')
+    : EMPTY;
 const image: Fmt = (v) => (v ? '已设置' : EMPTY);
 
 /** 机构字段：标签、格式化、是否只有管理员能看具体值 */
@@ -36,7 +40,6 @@ const ORG_FIELDS: Record<string, { label: string; fmt: Fmt; sensitive?: boolean 
   intro: { label: '机构简介', fmt: text },
   province: { label: '所在省份', fmt: text },
   city: { label: '总部城市', fmt: text },
-  address: { label: '详细地址', fmt: text },
   website: { label: '官网', fmt: text },
   wechat: { label: '公众号', fmt: text },
   foundedAt: { label: '成立年份', fmt: year },
@@ -44,6 +47,7 @@ const ORG_FIELDS: Record<string, { label: string; fmt: Fmt; sensitive?: boolean 
   businessTypes: { label: '业务类型', fmt: list },
   countries: { label: '覆盖国家和地区', fmt: list },
   officeCities: { label: '校区城市', fmt: list },
+  campusAddresses: { label: '校区地址', fmt: campus },
   tags: { label: '标签', fmt: list },
   level: { label: '机构等级', fmt: text },
   status: { label: '合作状态', fmt: (v) => (v ? ORG_STATUS_LABEL[v as keyof typeof ORG_STATUS_LABEL] ?? String(v) : EMPTY) },

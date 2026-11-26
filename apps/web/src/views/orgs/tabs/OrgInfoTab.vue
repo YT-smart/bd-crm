@@ -31,7 +31,6 @@ const form = reactive({
   intro: '',
   province: null as string | null,
   city: null as string | null,
-  address: '',
   website: '',
   wechat: '',
   scale: '',
@@ -40,6 +39,8 @@ const form = reactive({
   businessTypes: [] as string[],
   countries: [] as string[],
   officeCities: [] as string[],
+  /** 校区地址：城市 → 详细地址 */
+  campusAddr: {} as Record<string, string>,
   tags: [] as string[],
   level: null as string | null,
   cooperateAt: null as number | null,
@@ -74,7 +75,6 @@ function resetForm() {
   form.intro = props.org.intro ?? '';
   form.province = props.org.province;
   form.city = props.org.city || null;
-  form.address = props.org.address ?? '';
   form.website = props.org.website ?? '';
   form.wechat = props.org.wechat ?? '';
   form.scale = props.org.scale ?? '';
@@ -83,6 +83,7 @@ function resetForm() {
   customType.value = '';
   form.countries = [...props.org.countries];
   form.officeCities = [...props.org.officeCities];
+  form.campusAddr = Object.fromEntries(props.org.campusAddresses.map((c) => [c.city, c.address]));
   form.tags = [...props.org.tags];
   form.level = props.org.level;
   form.cooperateAt = new Date(props.org.cooperateAt).getTime();
@@ -149,6 +150,13 @@ watch(() => form.city, (c, old) => {
   form.officeCities = offices;
 });
 
+/** 按校区城市顺序整理出要保存的校区地址（只留已填写的） */
+function campusAddresses() {
+  return form.officeCities
+    .map((city) => ({ city, address: (form.campusAddr[city] ?? '').trim() }))
+    .filter((c) => c.address);
+}
+
 const isDirty = computed(() => {
   const o = props.org;
   return (
@@ -157,7 +165,7 @@ const isDirty = computed(() => {
     form.intro !== (o.intro ?? '') ||
     form.province !== o.province ||
     (form.city ?? '') !== (o.city ?? '') ||
-    form.address !== (o.address ?? '') ||
+    JSON.stringify(campusAddresses()) !== JSON.stringify(o.campusAddresses) ||
     form.website !== (o.website ?? '') ||
     form.wechat !== (o.wechat ?? '') ||
     form.scale !== (o.scale ?? '') ||
@@ -181,7 +189,6 @@ function missingFields(): string[] {
   if (blank(form.name)) miss.push('机构名称');
   if (!form.province) miss.push('所在省份');
   if (!form.city) miss.push('总部城市');
-  if (blank(form.address)) miss.push('详细地址');
   if (form.foundedYear == null) miss.push('成立年份');
   if (blank(form.scale)) miss.push('机构规模');
   if (!form.cooperateAt) miss.push('合作时间');
@@ -191,6 +198,7 @@ function missingFields(): string[] {
   if (!finalBusinessTypes().length) miss.push('业务类型');
   if (!form.countries.length) miss.push('覆盖国家和地区');
   if (!form.officeCities.length) miss.push('校区城市');
+  for (const c of form.officeCities) if (blank(form.campusAddr[c] ?? '')) miss.push(`${c}校区地址`);
   if (blank(form.advantage)) miss.push('机构一句话优势');
   if (blank(form.intro)) miss.push('机构简介');
   return miss;
@@ -218,7 +226,6 @@ async function save() {
       intro: form.intro.trim(),
       province: form.province,
       city: form.city,
-      address: form.address.trim(),
       website: form.website.trim(),
       wechat: form.wechat.trim(),
       scale: form.scale.trim(),
@@ -226,6 +233,7 @@ async function save() {
       businessTypes: finalBusinessTypes(),
       countries: form.countries,
       officeCities: form.officeCities,
+      campusAddresses: campusAddresses(),
       cooperateAt: new Date(form.cooperateAt!).toISOString(),
       ...(canEditRate.value ? { defaultRate: form.defaultRate! } : {}),
     });
@@ -258,9 +266,6 @@ async function save() {
             filterable
             placeholder="选择总部城市"
           />
-        </NFormItem>
-        <NFormItem label="详细地址" required>
-          <NInput v-model:value="form.address" placeholder="详细地址" maxlength="200" />
         </NFormItem>
         <NFormItem v-if="!isOrgUser" label="机构等级">
           <NSelect v-model:value="form.level" :options="levelOptions" clearable placeholder="等级" />
@@ -329,6 +334,15 @@ async function save() {
             :max-tag-count="12"
             placeholder="选择校区城市（总部城市会自动加入）"
           />
+        </NFormItem>
+        <NFormItem
+          v-for="c in form.officeCities"
+          :key="`addr-${c}`"
+          :label="`${c}校区地址`"
+          class="full"
+          required
+        >
+          <NInput v-model:value="form.campusAddr[c]" :placeholder="`${c}校区的详细地址`" maxlength="200" />
         </NFormItem>
         <NFormItem v-if="!isOrgUser" label="标签" class="full">
           <NDynamicTags v-model:value="form.tags" :max="10" :disabled="!canEdit" />

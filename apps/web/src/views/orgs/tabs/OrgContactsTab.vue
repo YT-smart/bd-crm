@@ -5,7 +5,7 @@ import { ExternalLink, Plus, Pencil, Trash2 } from 'lucide-vue-next';
 import CopyText from '@/components/CopyText.vue';
 import WechatQr from '@/components/WechatQr.vue';
 import OrgCard from '../OrgCard.vue';
-import type { OrgContactItem, ContactInput } from '@bdcrm/shared';
+import type { OrgContactItem, ContactInput, CampusAddress } from '@bdcrm/shared';
 import { orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 
@@ -16,10 +16,11 @@ const props = withDefaults(
     canEdit?: boolean;
     website?: string | null;
     wechat?: string | null;
-    address?: string | null;
+    /** 各校区地址 */
+    campusAddresses?: CampusAddress[];
     hasWechatQr?: boolean;
   }>(),
-  { canEdit: true, website: null, wechat: null, address: null, hasWechatQr: false },
+  { canEdit: true, website: null, wechat: null, campusAddresses: () => [], hasWechatQr: false },
 );
 const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
@@ -148,7 +149,18 @@ function handleDelete(c: OrgContactItem) {
           <WechatQr v-if="wechat || hasWechatQr || canEdit" :org-id="orgId" :has="hasWechatQr" :can-edit="canEdit" @changed="emit('refresh')" />
         </span>
       </div>
-      <div class="kv-row"><span class="kv-label">地址</span><span class="kv-value"><CopyText :value="address" label="地址" /></span></div>
+      <div class="kv-row">
+        <span class="kv-label">地址</span>
+        <span class="kv-value">
+          <template v-if="campusAddresses.length">
+            <span v-for="c in campusAddresses" :key="c.city" class="campus-addr">
+              <span class="campus-city">{{ c.city }}</span>
+              <CopyText :value="c.address" :label="`${c.city}校区地址`" />
+            </span>
+          </template>
+          <template v-else>--</template>
+        </span>
+      </div>
     </div>
 
     <NModal v-model:show="showForm" preset="card" :title="editing ? '编辑联系人' : '添加联系人'" style="max-width: 480px">
@@ -230,6 +242,23 @@ function handleDelete(c: OrgContactItem) {
   font-weight: 500;
 }
 .spacer { flex: 1; }
+.campus-addr {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.campus-addr + .campus-addr {
+  margin-top: 6px;
+}
+.campus-city {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-2);
+  background: var(--neutral-soft);
+}
 .contact .kv-label,
 .org-rows .kv-label {
   flex-basis: 72px;

@@ -49,6 +49,7 @@ import {
   deleteAttachment,
   listStaff,
   exportOrgs,
+  campusAddressesOf,
   setWechatQr,
   getWechatQrKey,
   orgFilterFacets,
@@ -128,6 +129,7 @@ router.get('/export', requirePerm(PERM.ORG_EXPORT), async (req, res) => {
     省份: o.province ?? '',
     总部城市: o.city ?? '',
     校区城市: o.officeCities.join('、'),
+    校区地址: campusAddressesOf(o).map((c) => `${c.city}：${c.address}`).join('；'),
     覆盖国家和地区: o.countries.join('、'),
     合作状态: ORG_STATUS_LABEL[o.status] ?? o.status,
     等级: o.level ?? '',
@@ -210,6 +212,7 @@ const updateSchema = z.object({
   businessTypes: z.array(businessTypeSchema).max(20).optional(),
   countries: z.array(z.enum(COUNTRIES)).optional(),
   officeCities: z.array(citySchema).max(30).optional(),
+  campusAddresses: z.array(z.object({ city: citySchema, address: z.string().trim().max(200) })).max(30).optional(),
   tags: z.array(z.string().max(30)).max(10).optional(),
   level: z.enum(ORG_LEVELS).nullish(),
   status: z.nativeEnum(OrgStatus).optional(),
@@ -230,12 +233,12 @@ const updateSchema = z.object({
 /** 机构账号只能维护自己的基本资料、默认佣金与收款账户，等级/状态/负责 BD/合同等由内部维护 */
 const ORG_EDITABLE = new Set([
   'logo', 'advantage', 'intro', 'province', 'city', 'address', 'website', 'wechat', 'foundedAt', 'scale', 'cooperateAt', 'defaultRate',
-  'businessTypes', 'countries', 'officeCities', 'bankInfo',
+  'businessTypes', 'countries', 'officeCities', 'campusAddresses', 'bankInfo',
 ]);
 
 /** 基本信息必填：提交了这些字段就不能是空的（合作信息等其他卡片单独保存时不带这些字段） */
 const REQUIRED_BASIC: Record<string, string> = {
-  province: '所在省份', city: '总部城市', address: '详细地址', foundedAt: '成立年份', scale: '机构规模', website: '官网',
+  province: '所在省份', city: '总部城市', foundedAt: '成立年份', scale: '机构规模', website: '官网',
   wechat: '公众号', businessTypes: '业务类型', countries: '覆盖国家和地区', officeCities: '校区城市',
   advantage: '机构一句话优势', intro: '机构简介',
 };
