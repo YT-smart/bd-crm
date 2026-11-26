@@ -10,6 +10,7 @@ import {
   type DealSummary,
   type OrgOption,
   type PageResult,
+  DEAL_LEAD_SOURCE_GROUPS,
 } from '@bdcrm/shared';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/http';
@@ -51,6 +52,11 @@ function buildDealWhere(q: DealListQuery, scope: DealScope = {}, withStatus = tr
   else if (q.creatorType === 'STAFF') where.createdBy = { role: { in: ['STAFF', 'ADMIN'] } };
   if (q.creatorId) where.createdById = q.creatorId;
   if (q.advisorId) where.advisorId = q.advisorId;
+  // 线索来源：选了二级按渠道筛，只选一级则筛该一级下的全部渠道
+  if (q.leadSource) where.leadSource = q.leadSource;
+  else if (q.leadSourceGroup) {
+    where.leadSource = { in: [...(DEAL_LEAD_SOURCE_GROUPS.find((g) => g.group === q.leadSourceGroup)?.sources ?? [])] };
+  }
   const range = dayRange(q.startDate, q.endDate);
   if (range) where.dealAt = range;
   if (q.keyword) {
@@ -105,6 +111,7 @@ export async function listDeals(
       productName: d.product?.name ?? d.customProduct ?? null,
       customProduct: d.customProduct,
       leadCategory: d.leadCategory,
+      leadSource: d.leadSource,
       advisorId: d.advisorId,
       advisorName: d.advisor?.name ?? null,
       studentName: d.studentName,
@@ -265,6 +272,7 @@ interface CreateDealInput {
   productId?: string | null;
   customProduct?: string | null;
   leadCategory?: string | null;
+  leadSource?: string | null;
   advisorId?: string | null;
   studentName: string;
   studentPhone?: string | null;
@@ -306,6 +314,7 @@ export async function createDeal(input: CreateDealInput) {
       productId: input.productId ?? null,
       customProduct: input.productId ? null : input.customProduct || null,
       leadCategory: input.leadCategory || null,
+      leadSource: input.leadSource || null,
       advisorId: input.advisorId || null,
       studentName: input.studentName,
       studentPhone: input.studentPhone ?? null,
@@ -330,6 +339,7 @@ export async function updateDeal(
     productId?: string | null;
     customProduct?: string | null;
     leadCategory?: string | null;
+    leadSource?: string | null;
     advisorId?: string | null;
     studentName?: string;
     studentPhone?: string | null;
@@ -383,6 +393,7 @@ export async function updateDeal(
   if (input.amount !== undefined) data.amount = input.amount;
   if (input.note !== undefined) data.note = input.note;
   if (input.leadCategory !== undefined) data.leadCategory = input.leadCategory || null;
+  if (input.leadSource !== undefined) data.leadSource = input.leadSource || null;
   if (input.advisorId !== undefined) data.advisorId = input.advisorId || null;
 
   if (scope.enforceAgreedRate) {

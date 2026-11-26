@@ -194,6 +194,7 @@ model Deal {
   customProduct String? // 产品选「其他」时手填的产品名
   advisorId    String? // 签约顾问（员工账号；员工录入必填，机构录入不填）
   advisor      User?      @relation("DealAdvisor", fields: [advisorId], references: [id], onDelete: SetNull)
+  leadSource   String? // 线索来源（二级渠道，员工录入必填），一级来源由渠道推出
   leadCategory String? // 线索分类（员工录入必填）：主账号 / 投流线索 / ... 或「其他」时手填
   studentName  String
   studentPhone String?
@@ -227,6 +228,7 @@ model Deal {
   @@index([dealAt])
   @@index([settledAt])
   @@index([advisorId])
+  @@index([leadSource])
 }
 
 model Settlement {

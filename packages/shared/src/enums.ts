@@ -193,3 +193,103 @@ export const COUNTRIES = COUNTRY_GROUPS.flatMap((g) => g.items) as unknown as re
   (typeof COUNTRY_GROUPS)[number]['items'][number],
   ...(typeof COUNTRY_GROUPS)[number]['items'][number][],
 ];
+
+/** 成交的线索来源：一级为来源汇总，二级为具体渠道（员工录入必填，机构录入不填） */
+export const DEAL_LEAD_SOURCE_GROUPS: readonly { group: string; sources: readonly string[] }[] = [
+  {
+    group: "主账号汇总",
+    sources: [
+      "主号视频号（跟着Siri去留学）",
+      "主号小红书（跟着Siri去留学）",
+      "主号抖音（跟着Siri去留学）",
+      "主号小红书（象行国际教育）",
+      "主号微信siri7456",
+      "主号微信Siri7458",
+      "主号微信siri7457",
+      "主号微信siri2146",
+    ],
+  },
+  {
+    group: "直播汇总",
+    sources: [
+      "直播视频号主号（跟着Siri去留学）",
+      "直播抖音主号（跟着Siri去留学）",
+      "直播小红书主号（跟着Siri去留学）",
+    ],
+  },
+  {
+    group: "矩阵汇总",
+    sources: [
+      "矩阵抖音（跟着siri做规划）",
+      "矩阵抖音切片（跟着Siri做规划）",
+      "矩阵抖音号（跟着Siri说留学）",
+      "矩阵抖音切片（跟着siri做探索）",
+      "矩阵抖音（跟着siri聊干货）",
+      "矩阵抖音号（跟着Siri聊干货）",
+      "矩阵抖音号（跟着Siri做探索）",
+      "矩阵抖音号（跟着siri聊规划）",
+      "矩阵小红书（跟着siri聊规划）",
+      "矩阵小红书（跟着Sir选专业）",
+      "矩阵小红书（跟着siri去访校）",
+      "矩阵小红书切片（跟着siri找定位）",
+      "矩阵小红书（跟着Siri做规划）",
+      "矩阵小红书（跟着Siri说留学）",
+      "矩阵小红书（跟着Siri聊干货）",
+      "矩阵小红书（跟着Siri做探索）",
+      "矩阵视频号（跟着siri聊规划）",
+      "矩阵视频号（跟着Siri看名校）",
+      "矩阵视频号（跟着siri去访校）",
+      "矩阵视频号（跟着siri做规划）",
+      "矩阵视频号（跟着siri找定位）",
+      "矩阵视频号切片（跟着Siri做规划）",
+      "矩阵视频号（跟着siri做探索）",
+      "矩阵视频号（跟着siri聊干货）",
+      "矩阵视频号（跟着Siri说留学）",
+      "矩阵抖音（跟着siri聊规划）",
+      "矩阵抖音（跟着siri选专业）",
+      "矩阵抖音（跟着siri去访校）",
+    ],
+  },
+  {
+    group: "投流汇总",
+    sources: [
+      "投流（腾讯广告）",
+      "投流小红书主号（跟着siri去留学）",
+      "投流小红书主号（象行国际教育）",
+      "投流小红书主号（跟着siri去访校）",
+      "投流小红书切片（跟着siri选专业）",
+      "投流小红书切片（跟着siri聊规划）",
+      "投流抖音主号（跟着Siri去留学）",
+      "投流视频号切片（跟着siri聊规划）",
+    ],
+  },
+  {
+    group: "社群升单汇总",
+    sources: [
+      "2888社群升单",
+      "399社群升单",
+      "其他升单",
+    ],
+  },
+  {
+    group: "其他渠道",
+    sources: [
+      "联系前台",
+      "Jery小红书",
+      "Jery个人",
+      "麦大叔贝贝老师",
+      "美团",
+      "Siri个人",
+      "老客推荐",
+      "展会",
+    ],
+  },
+];
+
+/** 全部二级渠道 */
+export const DEAL_LEAD_SOURCES: readonly string[] = DEAL_LEAD_SOURCE_GROUPS.flatMap((g) => g.sources);
+
+/** 渠道 → 所属一级来源 */
+export const DEAL_LEAD_SOURCE_GROUP_OF: Record<string, string> = Object.fromEntries(
+  DEAL_LEAD_SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => [s, g.group])),
+);

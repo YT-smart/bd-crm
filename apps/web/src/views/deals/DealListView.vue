@@ -11,6 +11,8 @@ import { Download, Plus, RotateCcw, Search, Wallet, Lock } from 'lucide-vue-next
 import {
   DealStatus, DEAL_STATUS_LABEL, PERM,
   type DealListItem, type DealListQuery, type DealSummary,
+  DEAL_LEAD_SOURCE_GROUPS,
+  DEAL_LEAD_SOURCE_GROUP_OF,
 } from '@bdcrm/shared';
 import { dealApi, orgApi } from '@/api';
 import { ApiError } from '@/api/http';
@@ -82,6 +84,9 @@ const filters = reactive({
   creatorId: null as string | null,
   /** 签约顾问（仅管理员） */
   advisorId: null as string | null,
+  /** 线索来源一级 / 二级（员工录入的成交才有） */
+  leadSourceGroup: null as string | null,
+  leadSource: null as string | null,
   page: 1,
 });
 
@@ -116,6 +121,8 @@ function query(): DealListQuery {
     creatorType: filters.creatorType ?? undefined,
     creatorId: filters.creatorId ?? undefined,
     advisorId: filters.advisorId ?? undefined,
+    leadSourceGroup: filters.leadSourceGroup ?? undefined,
+    leadSource: filters.leadSource ?? undefined,
   };
 }
 
@@ -174,6 +181,31 @@ function loadStaff() {
 }
 /** 签约顾问：员工名字横排成按钮，单选 */
 const advisorFilterOptions = computed<FilterOption[]>(() => staffOptions.value.map((o) => ({ label: o.label, value: o.value })));
+/** 线索来源：一级横排按钮，二级在右侧下拉里选 */
+const showSourceFilter = computed(() => auth.user?.role !== 'ORG');
+const sourceGroupOptions: FilterOption[] = DEAL_LEAD_SOURCE_GROUPS.map((g) => ({ label: g.group, value: g.group }));
+const sourceGroupRow = computed({
+  get: () => (filters.leadSourceGroup ? [filters.leadSourceGroup] : []),
+  set: (v: string[]) => {
+    filters.leadSourceGroup = v[0] ?? null;
+    // 换了一级，原来选的二级不属于它就清掉
+    if (filters.leadSource && DEAL_LEAD_SOURCE_GROUP_OF[filters.leadSource] !== filters.leadSourceGroup) filters.leadSource = null;
+  },
+});
+const sourceOptions = computed(() =>
+  DEAL_LEAD_SOURCE_GROUPS.filter((g) => !filters.leadSourceGroup || g.group === filters.leadSourceGroup).map((g) => ({
+    type: 'group' as const,
+    label: g.group,
+    key: g.group,
+    children: g.sources.map((s) => ({ label: s, value: s })),
+  })),
+);
+function onPickSource(v: string | null) {
+  filters.leadSource = v;
+  // 直接选二级时，一级跟着高亮
+  if (v) filters.leadSourceGroup = DEAL_LEAD_SOURCE_GROUP_OF[v] ?? null;
+}
+
 const advisorRow = computed({
   get: () => (filters.advisorId ? [filters.advisorId] : []),
   set: (v: string[]) => { filters.advisorId = v[0] ?? null; },
@@ -230,7 +262,7 @@ async function reload() { await Promise.all([load(), loadSummary()]); }
 
 const debouncedKeyword = useDebounceFn(() => { filters.page = 1; reload(); }, 300);
 watch(() => filters.keyword, debouncedKeyword);
-watch(() => [filters.status, filters.datePreset, filters.dateRange, filters.creatorType, filters.creatorId, filters.advisorId], () => {
+watch(() => [filters.status, filters.datePreset, filters.dateRange, filters.creatorType, filters.creatorId, filters.advisorId, filters.leadSourceGroup, filters.leadSource], () => {
   filters.page = 1;
   checkedKeys.value = [];
   reload();
@@ -241,7 +273,7 @@ watch(() => [filters.dateRange, filters.datePreset], () => {
 });
 
 function resetFilters() {
-  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, creatorType: null, creatorId: null, advisorId: null, page: 1 });
+  Object.assign(filters, { keyword: '', status: null, datePreset: null, dateRange: null, creatorType: null, creatorId: null, advisorId: null, leadSourceGroup: null, leadSource: null, page: 1 });
   sort.value = null;
   checkedKeys.value = [];
 }
@@ -396,6 +428,7 @@ const columns = computed<DataTableColumns<DealListItem>>(() => {
       ? [
           { title: '签约顾问', key: 'advisorName', width: 100, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.advisorName ?? '--' },
           { title: '线索分类', key: 'leadCategory', width: 110, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.leadCategory ?? '--' },
+          { title: '线索来源', key: 'leadSource', width: 200, ellipsis: { tooltip: true }, render: (r: DealListItem) => r.leadSource ?? '--' },
         ]
       : []),
     {
@@ -467,7 +500,7 @@ const pagination = computed(() => ({
 }));
 
 const hasFilter = computed(
-  () => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || filters.creatorType || filters.creatorId || filters.advisorId || sort.value),
+  () => !!(filters.keyword || filters.status || filters.datePreset || filters.dateRange || filters.creatorType || filters.creatorId || filters.advisorId || filters.leadSourceGroup || filters.leadSource || sort.value),
 );
 
 /* ---------- 初始化 ---------- */
@@ -534,6 +567,18 @@ onMounted(async () => {
         />
       </FilterRow>
       <FilterRow v-if="canFilterCreator" v-model="advisorRow" label="签约顾问" :options="advisorFilterOptions" single />
+      <FilterRow v-if="showSourceFilter" v-model="sourceGroupRow" label="线索来源" :options="sourceGroupOptions" single>
+        <NSelect
+          :value="filters.leadSource"
+          :options="sourceOptions"
+          filterable
+          clearable
+          size="small"
+          placeholder="来源二级（可搜索）"
+          class="source-sel"
+          @update:value="onPickSource"
+        />
+      </FilterRow>
       <FilterRow v-model="statusRow" label="状态" :options="statusOptions" single all-label="全部" />
       <FilterRow v-model="dateRow" label="成交日期" :options="DATE_PRESETS" single>
         <NDatePicker
@@ -707,6 +752,7 @@ onMounted(async () => {
 .sel { width: 200px; }
 .date-pick { width: 260px; }
 .creator-sel { width: 150px; }
+.source-sel { width: 260px; }
 :deep(.creator-cell) { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 :deep(.creator-tag) {
   flex-shrink: 0;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import { NDatePicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useMessage } from 'naive-ui';
-import { DEAL_LEAD_CATEGORIES, type DealListItem, type OrgOption } from '@bdcrm/shared';
+import { NCascader, NDatePicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useMessage } from 'naive-ui';
+import { DEAL_LEAD_CATEGORIES, DEAL_LEAD_SOURCE_GROUPS, DEAL_LEAD_SOURCES, type DealListItem, type OrgOption } from '@bdcrm/shared';
 import { dealApi, orgApi } from '@/api';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -52,6 +52,8 @@ const form = reactive({
   customProduct: '',
   leadCategory: null as string | null,
   customCategory: '',
+  /** 线索来源（二级渠道） */
+  leadSource: null as string | null,
   advisorId: null as string | null,
   studentName: '',
   studentPhone: '',
@@ -83,6 +85,13 @@ function splitCategory(v: string | null) {
     ? { leadCategory: v, customCategory: '' }
     : { leadCategory: OTHER, customCategory: v };
 }
+
+/** 线索来源：一级来源 → 二级渠道，只能选到二级 */
+const sourceOptions = DEAL_LEAD_SOURCE_GROUPS.map((g) => ({
+  label: g.group,
+  value: `group:${g.group}`,
+  children: g.sources.map((s) => ({ label: s, value: s })),
+}));
 
 /** 约定比例：产品单独比例优先，否则机构默认比例 */
 function agreedRate() {
@@ -120,6 +129,8 @@ watch(show, async (open) => {
       productId: d.productId ?? (d.customProduct ? OTHER : null),
       customProduct: d.customProduct ?? '',
       ...splitCategory(d.leadCategory),
+      // 不在渠道清单里的旧值不回填，需要重新选
+      leadSource: d.leadSource && DEAL_LEAD_SOURCES.includes(d.leadSource) ? d.leadSource : null,
       advisorId: d.advisorId,
       studentName: d.studentName,
       studentPhone: d.studentPhone ?? '',
@@ -139,6 +150,7 @@ watch(show, async (open) => {
     customProduct: '',
     leadCategory: null,
     customCategory: '',
+    leadSource: null,
     // 签约顾问默认是录入的员工自己
     advisorId: advisorOptions.value.some((o) => o.value === auth.user?.id) ? auth.user!.id : null,
     studentName: '',
@@ -159,6 +171,7 @@ async function submit() {
   if (needCategory.value && !form.advisorId) { message.warning('请选择签约顾问'); return; }
   if (needCategory.value && !form.leadCategory) { message.warning('请选择线索分类'); return; }
   if (needCategory.value && isOtherCategory.value && !form.customCategory.trim()) { message.warning('请填写线索分类'); return; }
+  if (needCategory.value && !form.leadSource) { message.warning('请选择线索来源'); return; }
   if (!form.studentName.trim()) { message.warning('请输入学生姓名'); return; }
   if (!form.dealAt) { message.warning('请选择成交日期'); return; }
   if (form.amount <= 0) { message.warning('成交金额须大于0'); return; }
@@ -167,7 +180,11 @@ async function submit() {
     productId: isOther.value ? null : form.productId,
     customProduct: isOther.value ? form.customProduct.trim() : null,
     ...(needCategory.value
-      ? { leadCategory: isOtherCategory.value ? form.customCategory.trim() : form.leadCategory, advisorId: form.advisorId }
+      ? {
+          leadCategory: isOtherCategory.value ? form.customCategory.trim() : form.leadCategory,
+          leadSource: form.leadSource,
+          advisorId: form.advisorId,
+        }
       : {}),
     studentName: form.studentName.trim(),
     dealAt: new Date(form.dealAt).toISOString(),
@@ -232,6 +249,17 @@ async function submit() {
       </NFormItem>
       <NFormItem v-if="needCategory && isOtherCategory" label="分类名称" required>
         <NInput v-model:value="form.customCategory" placeholder="填写线索分类" maxlength="30" />
+      </NFormItem>
+      <NFormItem v-if="needCategory" label="线索来源" required>
+        <NCascader
+          v-model:value="form.leadSource"
+          :options="sourceOptions"
+          check-strategy="child"
+          expand-trigger="hover"
+          filterable
+          separator=" / "
+          placeholder="选择线索来源，可输入搜索"
+        />
       </NFormItem>
       <NFormItem label="学生姓名" required>
         <NInput v-model:value="form.studentName" placeholder="学生姓名" maxlength="50" />

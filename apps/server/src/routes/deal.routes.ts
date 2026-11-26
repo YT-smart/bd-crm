@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DealStatus, DEAL_STATUS_LABEL, PERM } from '@bdcrm/shared';
+import { DealStatus, DEAL_STATUS_LABEL, DEAL_LEAD_SOURCES, DEAL_LEAD_SOURCE_GROUP_OF, PERM } from '@bdcrm/shared';
 import { ok, Errors } from '../lib/http';
 import { requirePerm } from '../middlewares/auth';
 import { writeAudit } from '../services/audit.service';
@@ -53,6 +53,9 @@ router.get('/org-options', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
 
 /* ============ 导出 ============ */
 
+/** 线索来源只能从渠道清单里选 */
+const leadSourceSchema = z.string().trim().refine((v) => DEAL_LEAD_SOURCES.includes(v), '线索来源不在渠道清单里');
+
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -67,6 +70,9 @@ const querySchema = z.object({
   creatorId: z.string().cuid().optional(),
   /** 签约顾问（仅管理员可用） */
   advisorId: z.string().cuid().optional(),
+  /** 线索来源一级 / 二级 */
+  leadSourceGroup: z.string().trim().max(50).optional(),
+  leadSource: z.string().trim().max(100).optional(),
 });
 
 /** 解析查询条件；按录入方 / 录入人筛选只给能看全部成交的管理员 */
@@ -89,6 +95,8 @@ router.get('/export', requirePerm(PERM.DEAL_EXPORT), async (req, res) => {
     studentName: d.studentName,
     productName: d.product?.name ?? d.customProduct ?? '',
     leadCategory: d.leadCategory ?? '',
+    leadSourceGroup: d.leadSource ? DEAL_LEAD_SOURCE_GROUP_OF[d.leadSource] ?? '' : '',
+    leadSource: d.leadSource ?? '',
     advisor: d.advisor?.name ?? '',
     dealAt: fmtDay(d.dealAt),
     amount: Number(d.amount),
@@ -118,6 +126,7 @@ const createSchema = z.object({
   /** 产品选「其他」时手填 */
   customProduct: z.string().trim().max(50).nullish(),
   leadCategory: z.string().trim().max(30).nullish(),
+  leadSource: leadSourceSchema.nullish(),
   /** 签约顾问：员工账号 */
   advisorId: z.string().cuid().nullish(),
   studentName: z.string().trim().min(1, '学生姓名不能为空').max(50),
@@ -135,9 +144,11 @@ router.post('/', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   // 线索分类：员工（含管理员）录入必填，机构录入不填
   if (req.user!.role === 'ORG') {
     input.leadCategory = null;
+    input.leadSource = null;
     input.advisorId = null;
   } else {
     if (!input.leadCategory) throw Errors.badRequest('请选择线索分类');
+    if (!input.leadSource) throw Errors.badRequest('请选择线索来源');
     // 签约顾问：员工录入必填
     if (!input.advisorId) throw Errors.badRequest('请选择签约顾问');
     await assertAdvisor(input.advisorId);
@@ -168,6 +179,7 @@ const updateSchema = z.object({
   productId: z.string().cuid().nullish(),
   customProduct: z.string().trim().max(50).nullish(),
   leadCategory: z.string().trim().max(30).nullish(),
+  leadSource: leadSourceSchema.nullish(),
   /** 签约顾问：员工账号 */
   advisorId: z.string().cuid().nullish(),
   studentName: z.string().trim().min(1).max(50).optional(),
@@ -184,6 +196,7 @@ router.put('/:id', requirePerm(PERM.DEAL_CREATE), async (req, res) => {
   const u = req.user!;
   if (u.role === 'ORG') {
     delete input.leadCategory;
+    delete input.leadSource;
     delete input.advisorId;
   } else if (input.advisorId) {
     await assertAdvisor(input.advisorId);
