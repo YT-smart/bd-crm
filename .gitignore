@@ -13,3 +13,6 @@ bd-crm/
 # Local env files
 .env.*
 !.env.example
+
+# HTTPS 证书（只放服务器）
+/ssl/
