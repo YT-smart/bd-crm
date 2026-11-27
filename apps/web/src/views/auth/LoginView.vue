@@ -154,6 +154,10 @@ function fillDemo(username: string, password: string) {
           </div>
         </div>
       </div>
+
+      <footer class="beian">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">粤ICP备17156646号-3</a>
+      </footer>
     </section>
   </div>
 </template>
@@ -305,11 +309,29 @@ function fillDemo(username: string, password: string) {
 
 /* ---------- 右侧表单 ---------- */
 .panel {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: 40px 24px 64px;
   background: var(--surface);
+}
+/* ICP 备案号：固定在页面底部居中 */
+.beian {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  text-align: center;
+  font-size: 12px;
+}
+.beian a {
+  color: var(--text-3);
+  text-decoration: none;
+}
+.beian a:hover {
+  color: var(--brand);
+  text-decoration: underline;
 }
 .panel-inner {
   width: 100%;
